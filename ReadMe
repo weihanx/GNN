@@ -1,2 +1,4 @@
 For Sck-Music-Analysis
-Only need to run python train.py
+
+Install Conda Environment
+conda create -n myenv –file package-list.txt
