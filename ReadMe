@@ -5,3 +5,6 @@ conda create -n myenv –file package-list.txt
 
 Activate Your Conda Env before training
 conda activate myenv
+
+Train:
+python train.py
