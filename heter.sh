@@ -15,7 +15,7 @@
 # python train.py
 # python naive_train.py
 # python grad_accm.py
-python grad_accm_sck_old.py
+python train.py
 # python diffpool.py
 # python test_coor.py
 # then try using the skn analysis to predict
