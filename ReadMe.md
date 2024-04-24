@@ -1,17 +1,25 @@
-For Sck-Music-Analysis
+# For Sck-Music-Analysis
 
-Activate GPU with interactive session:
+# Environment Setting:
+## 1. Login to cluster:
+ssh netid@login.cs.duke.edu
+
+## 2. Activate GPU with Interactive Session:
 srun -p compsci-gpu --gres=gpu:1 --pty bash -i
 
-Install Conda Environment
+## 3. Install Conda Environment(only install once)
 conda create -n myenv –file package-list.txt
 
-Activate Your Conda Env before training
+## 4. Activate Your Conda Env before Training
 conda activate myenv
 
-Train:
+## 5. Train:
 python train.py
-If you want to change the weight of the loss:
-CLASS_WEIGHT = [first cluster wight, second cluster weight]
 
-Plot with PaCMAP
+## 6. Experiments:
+
+If you want to change the weight of the loss:
+python train.py --> CLASS_WEIGHT = [first layer wight, second layer weight]
+
+## 7. Plot with PaCMAP
+python plot.py
