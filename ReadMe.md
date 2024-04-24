@@ -8,6 +8,11 @@ ssh netid@login.cs.duke.edu
 srun -p compsci-gpu --gres=gpu:1 --pty bash -i
 
 ### 3. Install Conda Environment(only install once)
+#### Download Miniconda
+https://docs.anaconda.com/free/miniconda/index.html
+Remeber to pick the "Linux" one.
+
+#### Create New Working Environment
 conda create -n myenv –file package-list.txt
 
 ### 4. Activate Your Conda Env before Training
