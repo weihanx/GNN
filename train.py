@@ -96,7 +96,7 @@ def train_sck(model, loss_fn, train_loader, class_weight):
         data = databatch['data']
         sck_mat_tuple = databatch['cluster']
         data = data.to("cuda")
-        final_emb, out, s1_pred, s2_pred = model(data.x_dict, data.edge_index_dict, data['note'].batch)
+        final_emb, s1_pred, s2_pred = model(data.x_dict, data.edge_index_dict, data['note'].batch)
         s1_pred_np = s1_pred.detach().cpu().numpy()
         s2_pred_np = s2_pred.detach().cpu().numpy()
         final_emb = final_emb.detach().cpu().numpy()
@@ -124,11 +124,11 @@ def train_sck(model, loss_fn, train_loader, class_weight):
 
         optimizer.step()
         optimizer.zero_grad()
-        _, predicted_labels = torch.max(out, 1)
+        # _, predicted_labels = torch.max(out, 1)
 
-        correct += (predicted_labels == data.y).sum().item()
-        train_acc = correct / count
-    return np.mean(train_loss),train_acc # average loss for this epoch
+        # correct += (predicted_labels == data.y).sum().item()
+        # train_acc = correct / count
+    return np.mean(train_loss) # average loss for this epoch
 
 
 def validate_sck(model, loss_fn, valid_loader, class_weight):
@@ -143,7 +143,7 @@ def validate_sck(model, loss_fn, valid_loader, class_weight):
             data = databatch['data']
             sck_mat_tuple = databatch['cluster']
             data = data.to("cuda")
-            final_emb, out, s1_pred, s2_pred = model(data.x_dict, data.edge_index_dict, data['note'].batch)
+            final_emb, s1_pred, s2_pred = model(data.x_dict, data.edge_index_dict, data['note'].batch)
 
             s1_pred_np = s1_pred.detach().cpu().numpy()
             s2_pred_np = s2_pred.detach().cpu().numpy()
@@ -168,12 +168,12 @@ def validate_sck(model, loss_fn, valid_loader, class_weight):
             loss = class_weight[0] * loss2 + class_weight[1] * loss3
             count += 1
             val_loss.append(loss.item())
-            _, predicted_labels = torch.max(out, 1)
+            # _, predicted_labels = torch.max(out, 1)
 
-            correct += (predicted_labels == data.y).sum().item()
+            # correct += (predicted_labels == data.y).sum().item()
 
-        val_acc = correct / count
-    return np.mean(val_loss), val_acc
+        # val_acc = correct / count
+    return np.mean(val_loss)
 
 
 def train_nosck(model, loss_fn, train_loader):
@@ -268,14 +268,14 @@ loss_fn = SIM_CRITERION
 class_weight = [0.7, 0.3]
 
 for epoch in range(num_epochs):
-    train_loss, train_accuracy = train_sck(model, loss_fn, train_loader, class_weight)
-    valid_loss, valid_accuracy = validate_sck(model, loss_fn, valid_loader, class_weight)
-    print(f'Epoch: {epoch+1}, Training Loss: {train_loss:.4f}, Training Acc: {train_accuracy:.4f}, Validation Loss: {valid_loss:.4f}, Validation Acc: {valid_accuracy:.4f}')
+    train_loss = train_sck(model, loss_fn, train_loader, class_weight)
+    valid_loss = validate_sck(model, loss_fn, valid_loader, class_weight)
+    print(f'Epoch: {epoch+1}, Training Loss: {train_loss:.4f}, Validation Loss: {valid_loss:.4f}')
     scheduler.step()
     train_loss_curve.append(train_loss)
     valid_loss_curve.append(valid_loss)
-    train_acc_curve.append(train_accuracy)
-    valid_acc_curve.append(valid_accuracy)
+    # train_acc_curve.append(train_accuracy)
+    # valid_acc_curve.append(valid_accuracy)
 logging.info(f"Plotting loss and acc curve")
 epochs = np.arange(0, 50, dtype=int)
 
