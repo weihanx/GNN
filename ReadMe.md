@@ -1,6 +1,6 @@
 # Music-Analysis With SA
 
-## Environment Setting:
+
 ### 1. Login to cluster:
 ssh netid@login.cs.duke.edu
 
