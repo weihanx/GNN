@@ -69,7 +69,7 @@ def calculate_accuracy(output, labels):
 
 
 def train_loop(model, optimizer, loader, device):
-    print(f"model device = {model.device}")
+    print(f"model device = {model.DEVICE}")
     model.train()
     total_loss = 0
     total_accuracy = 0
@@ -104,7 +104,7 @@ def validation_loop(model, loader, device):
     return average_loss, average_accuracy
 
 def train_loop_sck(model, optimizer, loader, device):
-    print(f"model device = {model.device}")
+    print(f"model device = {model.DEVICE}")
     model.train()
     total_loss = 0
     total_accuracy = 0

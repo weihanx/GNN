@@ -1,21 +1,13 @@
-# This is used for cluster layer
-
-
 import torch_utils
-from math import ceil
-from torch_geometric.nn.norm import LayerNorm
-import torch.nn.functional as F
-from torch_geometric.nn import HeteroConv, GCNConv, SAGEConv, GATConv, Linear
-from torch_geometric.nn.conv import DirGNNConv
-from torch_geometric.nn.conv import MessagePassing
+from torch_geometric.nn import HeteroConv, SAGEConv, Linear
 import torch
 
-from torch.nn import Dropout
-from torch_geometric.nn import global_mean_pool
 from GNN_backbone import HeteroGNN
+from config import DEVICE
+
 
 class GNN_Cluster(torch.nn.Module):
-    def __init__(self, embedding_dim, hidden_dim, num_classes, device = "cuda"):
+    def __init__(self, embedding_dim, hidden_dim, num_classes, device=DEVICE):
         super(GNN_Cluster, self).__init__()
         self.device = device
 
@@ -24,9 +16,9 @@ class GNN_Cluster(torch.nn.Module):
         self.gnn2_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden, output
         self.custom_weight_init(self.gnn2_embed)
 
-        self.linear = torch.nn.Linear(hidden_dim, 1).to(device) 
+        self.linear = torch.nn.Linear(hidden_dim, 1).to(device)
 
-        torch.nn.init.xavier_uniform_(self.linear.weight) # avoid all zero or all
+        torch.nn.init.xavier_uniform_(self.linear.weight)  # avoid all zero or all
 
         self.classifier = Linear(hidden_dim, num_classes)
         self.dropout = torch.nn.Dropout(p=0.5)
@@ -36,7 +28,6 @@ class GNN_Cluster(torch.nn.Module):
             torch.nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
             if m.bias is not None:
                 torch.nn.init.zeros_(m.bias)
-
 
     def euclidean_distance_matrix(self, x):
         num_node, num_feat = x.shape
@@ -48,10 +39,11 @@ class GNN_Cluster(torch.nn.Module):
                 diff = x[i] - x[j]
                 res = diff * diff
                 dist_list.append(res)
-        distance_mat = torch.stack(dist_list, dim=0) # add new dimension
+        distance_mat = torch.stack(dist_list, dim=0)  # add new dimension
         # print(f"shape of distance mat = {distance_mat.shape}")
-        
+
         return distance_mat
+
     def coord_to_adj(self, edge_index_dict, num_nodes):
         """
         change to adj matrix for pooling
@@ -65,7 +57,6 @@ class GNN_Cluster(torch.nn.Module):
                 adj[edge] = adj_matrix
         return adj
 
-
     def adj_to_coord(self, adj_matrix):
         """
         change back too coordinates for gnn model
@@ -76,7 +67,7 @@ class GNN_Cluster(torch.nn.Module):
             coords[edge] = edge_index
 
         return coords
-    
+
     def custom_weight_init(self, model):
         for m in model.modules():
             if isinstance(m, HeteroConv):
@@ -92,15 +83,15 @@ class GNN_Cluster(torch.nn.Module):
             if edge_index_dict[edge_type].numel() == 0:
                 edge_index_dict[edge_type] = torch.empty((2, 0), dtype=torch.long).to(self.device)
 
-        dist_vec = self.euclidean_distance_matrix(z_0) # (51*25, 200)
+        dist_vec = self.euclidean_distance_matrix(z_0)  # (51*25, 200)
         # print(f"before linear = {M}")
         dist_vec = self.linear(dist_vec).to(self.device).float()
 
-        dist_vec = torch.sigmoid(dist_vec) # shape is (51*25, 1)
+        dist_vec = torch.sigmoid(dist_vec)  # shape is (51*25, 1)
         dist_vec = dist_vec.squeeze()
         # print(f"shape of M_G = {M_G.shape}")
         # resize to upper triangular matrix
-        tri_M_G = torch.zeros((num_nodes, num_nodes),device = dist_vec.device)
+        tri_M_G = torch.zeros((num_nodes, num_nodes), device=dist_vec.device)
         row_indices, col_indices = torch.triu_indices(num_nodes, num_nodes, offset=0)
         # flip 
         tri_M_G[row_indices, col_indices] = dist_vec
@@ -111,7 +102,7 @@ class GNN_Cluster(torch.nn.Module):
         tri_M_G = tri_M_G.unsqueeze(0)  # only need for build-in function
         # print(f" S1: M_G = {new_M_G}")
         conv_sqrt = torch_utils.MPA_Lya.apply(tri_M_G)
-        S_1 = conv_sqrt.squeeze().float()  
+        S_1 = conv_sqrt.squeeze().float()
 
         adj = self.coord_to_adj(edge_index_dict, num_nodes)
         adj_1 = {}
@@ -119,7 +110,7 @@ class GNN_Cluster(torch.nn.Module):
         # print(f"pooling matrix = {S}")
         num_nodes = x['note'].shape[0]
         for edge_type, A in adj.items():
-            result = torch.matmul(torch.matmul(S_1, A),S_1).float()
+            result = torch.matmul(torch.matmul(S_1, A), S_1).float()
             adj_1[edge_type] = result
 
         edge_dict_1 = self.adj_to_coord(adj_1)

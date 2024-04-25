@@ -1,88 +1,48 @@
-from torch_geometric.transforms.pad import EdgeTypePadding, NodeTypePadding
-import torch
-from torch_geometric.data import Data
 import numpy as np
-import time
-import pathlib
 from pathlib import Path
-import torch.nn.functional as F
-from config import *
-from torch_geometric.typing import EdgeType, NodeType
-import torch_geometric.transforms as transforms
-import networkx as nx
-from torch_geometric.utils.convert import to_networkx
-import matplotlib.pyplot as plt
-import os
-import pandas as pd
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-import json
-import sys
-
-from math import ceil
-from torch_geometric.nn.norm import LayerNorm
-import matplotlib.pyplot as plt
-from pyScoreParser.musicxml_parser.mxp import MusicXMLDocument
-from torch_geometric.nn import dense_diff_pool
-from torch.nn.parallel import DistributedDataParallel as DDP # parallel
-import pyScoreParser.score_as_graph as score_graph
-import pickle
-import torch.nn.functional as F
-from torch_geometric.nn import HGTConv, Linear
-from torch_geometric.transforms import Pad
-import csv
-from torch_geometric.loader import DataLoader
-from torch_geometric.loader import DenseDataLoader
-from torch_geometric.datasets import OGB_MAG
-from torch_geometric.nn import SAGEConv, to_hetero
-from torch_geometric.nn import HGTConv, Linear
-from torch_geometric.nn import HeteroConv, GCNConv, SAGEConv, GATConv, Linear
-from torch_geometric.nn import global_mean_pool
-from torch_geometric.data import Dataset, HeteroData
 import logging
-import xml.etree.ElementTree as ET
-import torch.nn as nn
-import torch_geometric.transforms as T
-from dataset_heter import HeterGraph
-from utils import start_logger, prepare_data_loaders, \
-    prepare_model, plot_metrics, train_loop, validation_loop
-# import SckIR
+import matplotlib.pyplot as plt
+
+from utils import start_logger, prepare_data_loaders, prepare_model
 import Sckgroupmat
 import dataset_heter
-
+from config import *
 
 """
 Dataset Loading
 """
 
-
 start_logger()
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-TRIAN_NAMES = "train-names.txt"
+TRAIN_NAMES = "train-names.txt"
 SAVE_FOLDER = "hetergraph0422_4feature/"
 NUM_FEAT = 111
 EMB_DIM = 32
 HIDDEN_DIM = 200
 NUM_CLASS = 15
 dataset_class = dataset_heter.HeterGraph
-train_loader, valid_loader = prepare_data_loaders(TRIAN_NAMES, SAVE_FOLDER, dataset_class)
+train_loader, valid_loader = prepare_data_loaders(TRAIN_NAMES, SAVE_FOLDER, dataset_class)
 
-model, optimizer, scheduler = prepare_model(NUM_FEAT,EMB_DIM, HIDDEN_DIM, NUM_CLASS, model_class=Sckgroupmat.GroupMat, device = device)
+model, optimizer, scheduler = prepare_model(
+    NUM_FEAT,
+    EMB_DIM,
+    HIDDEN_DIM,
+    NUM_CLASS,
+    model_class=Sckgroupmat.GroupMat,
+    device=DEVICE
+)
 
-model.to(device)
+model.to(DEVICE)
 
 
 def test(loader):
     model.eval()
     correct = 0
     for data in loader:
-        out = model(data.x_dict, data.edge_index_dict,data.batch)
+        out = model(data.x_dict, data.edge_index_dict, data.batch)
         pred = out.argmax(dim=1)
-        correct += int((pred == data.y).sum()) 
-    return correct / len(loader.dataset) 
-
+        correct += int((pred == data.y).sum())
+    return correct / len(loader.dataset)
 
 
 def train_sck(model, loss_fn, train_loader, class_weight):
@@ -95,7 +55,7 @@ def train_sck(model, loss_fn, train_loader, class_weight):
         filename = Path(databatch['name'][0])
         data = databatch['data']
         sck_mat_tuple = databatch['cluster']
-        data = data.to("cuda")
+        data = data.to(DEVICE)
         final_emb, s1_pred, s2_pred = model(data.x_dict, data.edge_index_dict, data['note'].batch)
         s1_pred_np = s1_pred.detach().cpu().numpy()
         s2_pred_np = s2_pred.detach().cpu().numpy()
@@ -114,9 +74,9 @@ def train_sck(model, loss_fn, train_loader, class_weight):
         s1 = torch.matmul(cluster1, cluster1.t())
         s2 = torch.matmul(cluster1, cluster2)
         s2 = torch.matmul(s2, s2.t())
-        s1 = s1.to("cuda")
-        s2 = s2.to("cuda")
-        loss2 = loss_fn(s1_pred.float(), s1.float()) 
+        s1 = s1.to(DEVICE)
+        s2 = s2.to(DEVICE)
+        loss2 = loss_fn(s1_pred.float(), s1.float())
         loss3 = loss_fn(s2_pred.float(), s2.float())
         loss = class_weight[0] * loss2 + class_weight[1] * loss3
         train_loss.append(loss.item())
@@ -128,7 +88,7 @@ def train_sck(model, loss_fn, train_loader, class_weight):
 
         # correct += (predicted_labels == data.y).sum().item()
         # train_acc = correct / count
-    return np.mean(train_loss) # average loss for this epoch
+    return np.mean(train_loss)  # average loss for this epoch
 
 
 def validate_sck(model, loss_fn, valid_loader, class_weight):
@@ -142,7 +102,7 @@ def validate_sck(model, loss_fn, valid_loader, class_weight):
             filename = Path(databatch['name'][0])
             data = databatch['data']
             sck_mat_tuple = databatch['cluster']
-            data = data.to("cuda")
+            data = data.to(DEVICE)
             final_emb, s1_pred, s2_pred = model(data.x_dict, data.edge_index_dict, data['note'].batch)
 
             s1_pred_np = s1_pred.detach().cpu().numpy()
@@ -156,13 +116,13 @@ def validate_sck(model, loss_fn, valid_loader, class_weight):
             np.save(filename.with_name(f"{filename.stem}_s2_pred_weighted_73.npy"), s2_pred_np)
             np.save(filename.with_name(f"{filename.stem}_valid_sck_out_weighted_73.npy"), final_emb)
             np.save(filename.with_name(f"{filename.stem}_true_valid_label_weighted_73.npy"), y_np)
-            cluster1 = sck_mat_tuple[0][0]# (1,8,5), (1,5,4): it has batch dimension
+            cluster1 = sck_mat_tuple[0][0]  # (1,8,5), (1,5,4): it has batch dimension
             cluster2 = sck_mat_tuple[1][0]
             s1 = torch.matmul(cluster1, cluster1.t())
             s2 = torch.matmul(cluster1, cluster2)
             s2 = torch.matmul(s2, s2.t())
-            s1 = s1.to("cuda")
-            s2 = s2.to("cuda")
+            s1 = s1.to(DEVICE)
+            s2 = s2.to(DEVICE)
             loss2 = loss_fn(s1_pred.float(), s1.float())
             loss3 = loss_fn(s2_pred.float(), s2.float())
             loss = class_weight[0] * loss2 + class_weight[1] * loss3
@@ -188,7 +148,7 @@ def train_nosck(model, loss_fn, train_loader):
 
         data = data.to("cuda")
         final_emb, out, s1_pred, s2_pred = model(data.x_dict, data.edge_index_dict, data['note'].batch)
-        
+
         s1_pred_np = s1_pred.detach().cpu().numpy()
         s2_pred_np = s2_pred.detach().cpu().numpy()
         final_emb = final_emb.detach().cpu().numpy()
@@ -213,7 +173,8 @@ def train_nosck(model, loss_fn, train_loader):
 
         correct += (predicted_labels == data.y).sum().item()
         train_acc = correct / count
-    return np.mean(train_loss),train_acc # average loss for this epoch
+    return np.mean(train_loss), train_acc  # average loss for this epoch
+
 
 def validate_nosck(model, loss_fn, valid_loader):
     logging.debug(f"Validating...")
@@ -241,9 +202,9 @@ def validate_nosck(model, loss_fn, valid_loader):
             np.save(filename.with_name(f"{filename.stem}_true_valid_label.npy"), y_np)
             np.save(filename.with_name(f"{filename.stem}_s1_pred_valid_nosck.npy"), s1_pred_np)
             np.save(filename.with_name(f"{filename.stem}_s2_pred_valid_nosck.npy"), s2_pred_np)
-            
+
             loss = loss_fn(out, data.y)
-            
+
             val_loss.append(loss.item())
             _, predicted_labels = torch.max(out, 1)
 
@@ -255,8 +216,8 @@ def validate_nosck(model, loss_fn, valid_loader):
 
 
 # Assuming your model, optimizer, and loss function are defined
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model.to(device)
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model.to(DEVICE)
 
 # Training and validation loop
 num_epochs = 50
@@ -270,7 +231,7 @@ class_weight = [0.7, 0.3]
 for epoch in range(num_epochs):
     train_loss = train_sck(model, loss_fn, train_loader, class_weight)
     valid_loss = validate_sck(model, loss_fn, valid_loader, class_weight)
-    print(f'Epoch: {epoch+1}, Training Loss: {train_loss:.4f}, Validation Loss: {valid_loss:.4f}')
+    print(f'Epoch: {epoch + 1}, Training Loss: {train_loss:.4f}, Validation Loss: {valid_loss:.4f}')
     scheduler.step()
     train_loss_curve.append(train_loss)
     valid_loss_curve.append(valid_loss)
