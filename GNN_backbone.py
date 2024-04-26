@@ -32,16 +32,17 @@ class HeteroGNN(torch.nn.Module):
         }, aggr='sum')
         self.norm_2 = LayerNorm(hidden_channels)
 
-    def forward(self, x_dict, edge_index_dict, flatten=False):
+    def forward(self, x, edge_index_dict, flatten=False):
         # deal with missing edge
         for edge_type in edge_index_dict:
             if edge_index_dict[edge_type].numel() == 0:
                 edge_index_dict[edge_type] = torch.empty((2, 0), dtype=torch.long).to(DEVICE)
-        x_dict = self.conv_1(x_dict, edge_index_dict)
-        x_dict['note'] = self.norm_1(x_dict['note'])
-        x_dict['note'] = self.dropout(x_dict['note'])
-        x_dict = self.conv_2(x_dict, edge_index_dict)
-        x_dict['note'] = self.norm_2(x_dict['note'])
 
-        return x_dict['note']
+        x = self.conv_1(x, edge_index_dict)
+        x['note'] = self.norm_1(x['note'])
+        x['note'] = self.dropout(x['note'])
+        x = self.conv_2(x, edge_index_dict)
+        x['note'] = self.norm_2(x['note'])
+
+        return x['note']
 

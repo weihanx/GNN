@@ -11,6 +11,7 @@ import dataset_heter
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
+
 # from config import MatrixNormLoss
 TRAIN_PERCENT = 0.8
 BATCH_SIZE = 1
@@ -40,20 +41,20 @@ def prepare_data_loaders(train_names, save_folder, transform=None, dataset_class
     train_names = [line.strip() for line in train_names]
 
     dataset = dataset_class(
-        root= save_folder,
+        root=save_folder,
         train_names=train_names,
-        transform=None, # no need for padding
+        transform=None,  # no need for padding
         pre_transform=None
     )
 
-    train_size = int(len(dataset) * TRAIN_PERCENT )  # 5200
+    train_size = int(len(dataset) * TRAIN_PERCENT)  # 5200
     train_dataset, valid_dataset = torch.utils.data.random_split(dataset, [train_size, len(dataset) - train_size])
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     valid_loader = DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False)
     return train_loader, valid_loader
 
 
-def prepare_model(num_features,embedding_dim, hidden_dim, num_class, model_class, device):
+def prepare_model(num_features, embedding_dim, hidden_dim, num_class, model_class, device):
     model = model_class(num_features, embedding_dim, hidden_dim, num_class, device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)  # adamW
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=SCHEDULER_GAMMA)
@@ -103,6 +104,7 @@ def validation_loop(model, loader, device):
     average_accuracy = total_accuracy / len(loader)
     return average_loss, average_accuracy
 
+
 def train_loop_sck(model, optimizer, loader, device):
     print(f"model device = {model.DEVICE}")
     model.train()
@@ -112,10 +114,12 @@ def train_loop_sck(model, optimizer, loader, device):
         batch.to(device)
         optimizer.zero_grad()
         out, s1_pred, s2_pred = model(batch.x_dict, batch.edge_index_dict, batch['note'].batch)
-        s_true = torch.matmul(batch.s1, batch.s2) # clustering matrix
-        s_out = torch.matmul(s1_pred, s2_pred) # clustering matrix
+        s_true = torch.matmul(batch.s1, batch.s2)  # clustering matrix
+        s_out = torch.matmul(s1_pred, s2_pred)  # clustering matrix
         # print(f"shap of s1, s2 = {s1_pred.shape}, {s2_pred.shape}, output shape = {s_out.shape}")
-        loss = CLASSIFICATION_CRITERION(out, batch.y) + SIM_CRITERION(s1_pred, batch.s1) + SIM_CRITERION(s2_pred, batch.s2) + SIM_CRITERION(s_out, s_true)
+        loss = CLASSIFICATION_CRITERION(out, batch.y) + SIM_CRITERION(s1_pred, batch.s1) + SIM_CRITERION(s2_pred,
+                                                                                                         batch.s2) + SIM_CRITERION(
+            s_out, s_true)
         # loss = CLASSIFICATION_CRITERION(out, batch.y) + SIM_CRITERION(s1_pred, s1_pred) + SIM_CRITERION(s2_pred, s2_pred) + SIM_CRITERION(s_out, s_out)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM)
@@ -139,14 +143,15 @@ def validation_loop_sck(model, loader, device):
             s_true = torch.matmul(batch.s1, batch.s2)
             s_out = torch.matmul(s1_pred, s2_pred)
             # test whether the loss is doable:
-            loss = CLASSIFICATION_CRITERION(out, batch.y) + SIM_CRITERION(s1_pred, s1_pred) + SIM_CRITERION(s2_pred, s2_pred) + SIM_CRITERION(s_out, s_out)
+            loss = CLASSIFICATION_CRITERION(out, batch.y) + SIM_CRITERION(s1_pred, s1_pred) + SIM_CRITERION(s2_pred,
+                                                                                                            s2_pred) + SIM_CRITERION(
+                s_out, s_out)
             # loss = CLASSIFICATION_CRITERION(out, batch.y) + SIM_CRITERION(s1_pred, batch.s1) + SIM_CRITERION(s2_pred, batch.s2) + SIM_CRITERION(s_out, s_true)
             total_loss += loss.item()
             total_accuracy += calculate_accuracy(out, batch.y)
     average_loss = total_loss / len(loader)
     average_accuracy = total_accuracy / len(loader)
     return average_loss, average_accuracy
-
 
 
 def plot_metrics(
@@ -179,5 +184,3 @@ def plot_metrics(
     plt.tight_layout()
     if save_name:
         plt.savefig(save_name)
-
-

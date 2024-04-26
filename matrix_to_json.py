@@ -2,6 +2,7 @@ import numpy as np
 import pickle
 import json
 
+
 def read_file(file_path):
     with open(file_path, 'rb') as file:
         matrices = pickle.load(file)
@@ -35,7 +36,7 @@ def convert_to_format(depths, global_to_depths):
     return depths_format
 
 
-def process_raw(filepath): #I cannot find the json_to_cluster_refactor.py so I just put it here. Almost the same code for processing raw json.
+def process_raw(filepath):  # I cannot find the json_to_cluster_refactor.py so I just put it here. Almost the same code for processing raw json.
     with open(filepath, "r") as file:
         data_dict = json.load(file)
         t = data_dict["trebleNotes"]
@@ -61,13 +62,15 @@ def process_raw(filepath): #I cannot find the json_to_cluster_refactor.py so I j
                 idx += 1
             else:
                 b_depth.append(-1)
-            if ti["pitchNames"][i] != "_" and ti["pitchNames"][i] != t["pitchNames"][i] and ti["pitchNames"][i] != b["pitchNames"][i]:
+            if ti["pitchNames"][i] != "_" and ti["pitchNames"][i] != t["pitchNames"][i] and ti["pitchNames"][i] != \
+                    b["pitchNames"][i]:
                 ti_depth.append(ti["depths"][i])
                 global_to_depths[idx] = (1, i)
                 idx += 1
             else:
                 ti_depth.append(-1)
-            if bi["pitchNames"][i] != "_" and bi["pitchNames"][i] != t["pitchNames"] and bi["pitchNames"][i] != b["pitchNames"][i] and bi["pitchNames"][i] != ti["pitchNames"][i]:
+            if bi["pitchNames"][i] != "_" and bi["pitchNames"][i] != t["pitchNames"] and bi["pitchNames"][i] != \
+                    b["pitchNames"][i] and bi["pitchNames"][i] != ti["pitchNames"][i]:
                 bi_depth.append(bi["depths"][i])
                 global_to_depths[idx] = (2, i)
                 idx += 1
@@ -81,6 +84,7 @@ def generate_paths(piece):
     ground_truth_path = f'{base_path}/{piece}/{piece}.json'
     file_path = f'{base_path}/{piece}/{piece}.pkl'
     return ground_truth_path, file_path
+
 
 if __name__ == "__main__":
     piece = 'Primi_1'
