@@ -64,7 +64,7 @@ class MPA_Lya(torch.autograd.Function):
     @staticmethod
     def forward(ctx, M):
         normM = torch.norm(M,dim=[1,2]).reshape(M.size(0),1,1)
-        I = torch.eye(M.size(1), requires_grad=False, device=M.device).reshape(1,M.size(1),M.size(1)).repeat(M.size(0),1,1)
+        I = torch.eye(M.size(1), requires_grad=False, device=M.device).reshape(1, M.size(1), M.size(1)).repeat(M.size(0), 1, 1)
         #This is for MTP calculation
         #M_sqrt = matrix_taylor_polynomial(M/normM,I)
         M_sqrt = matrix_pade_approximant(M / normM, I)
@@ -92,7 +92,7 @@ class MPA_Lya_Inv(torch.autograd.Function):
     @staticmethod
     def forward(ctx, M):
         normM = torch.norm(M,dim=[1,2]).reshape(M.size(0),1,1)
-        I = torch.eye(M.size(1), requires_grad=False, device=M.device).reshape(1,M.size(1),M.size(1)).repeat(M.size(0),1,1)
+        I = torch.eye(M.size(1), requires_grad=False, device=M.DEVICE).reshape(1, M.size(1), M.size(1)).repeat(M.size(0), 1, 1)
         #M_sqrt = matrix_taylor_polynomial(M/normM,I)
         M_sqrt_inv = matrix_pade_approximant_inverse(M / normM, I)
         M_sqrt_inv = M_sqrt_inv / torch.sqrt(normM)

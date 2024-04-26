@@ -1,10 +1,12 @@
 import torch.nn
-from torch_geometric.transforms.pad import NodeTypePadding, EdgeTypePadding
 import torch.nn.functional as F
 import torch
 import torch.nn as nn
 # ROOT_PATH = "C:\\Users\\88ste\\PycharmProjects\\forks\\gnn-music-analysis" #Stephen
 ROOT_PATH = "/home/users/wx83/GNN_baseline/gnn-music-analysis/final_code" #Weihan
+
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 class MatrixNormLoss(nn.Module):
     def __init__(self, ord='fro'):
@@ -18,6 +20,7 @@ class MatrixNormLoss(nn.Module):
         diff = input - target
         loss = torch.linalg.matrix_norm(diff, ord=self.ord)
         return loss
+
 
 class WeightedNLLLoss(nn.Module):
     def __init__(self):
