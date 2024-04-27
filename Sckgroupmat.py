@@ -13,27 +13,14 @@ class GroupMat(torch.nn.Module):
 
         self.linear_embed = torch.nn.Linear(num_feature, embedding_dim)
 
-        self.gnn_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden_channel, output_channel
-        self.custom_weight_init(self.gnn_embed)
 
-        self.gnn_cluster1 = GNN_Cluster(hidden_dim, num_classes)
-        self.gnn_cluster2 = GNN_Cluster(hidden_dim, num_classes)
+
+        self.gnn_cluster1 = GNN_Cluster(embedding_dim, hidden_dim, num_classes, self.device)
+        # self.gnn_cluster2 = GNN_Cluster(hidden_dim, num_classes)
 
         self.gnn2_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)
         self.classifier = Linear(hidden_dim, num_classes)
         self.dropout = torch.nn.Dropout(p=0.5)
-
-    def custom_weight_init(self, model):
-        for m in model.modules():
-            if isinstance(m, HeteroConv):
-                for _, conv in m.convs.items():  # m.convs is the dictionary holding the convolutions
-                    self.init_weights(conv)
-
-    def init_weights(self, m):
-        if isinstance(m, SAGEConv):
-            torch.nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
-            if m.bias is not None:
-                torch.nn.init.zeros_(m.bias)
 
     def coord_to_adj(self, edge_index_dict, num_nodes):
         """
@@ -47,21 +34,21 @@ class GroupMat(torch.nn.Module):
                 adj[edge] = adj_matrix
         return adj
 
-    def forward(self, x, edge_index_dict):
+    def forward(self, data):
+        x = data.x_dict
+        edge_index_dict = data.edge_index_dict
+        attribute_dict = {edge_type: data[edge_type].edge_attr for edge_type in data.edge_types}
+
         x['note'] = x['note'].float()
         num_nodes = x['note'].shape[0]
 
         x['note'] = self.linear_embed(x['note'])
-        adjacency_matrices = self.coord_to_adj(edge_index_dict, num_nodes)
 
-        x['note'] = self.gnn_embed(x, edge_index_dict).float()
-
-        x, adjacency_matrices, S_1 = self.gnn_cluster1(x, adjacency_matrices)
-        x, adjacency_matrices, S_2 = self.gnn_cluster2(x, adjacency_matrices)
+        x, edge_dict, attribute_dict, S_1 = self.gnn_cluster1(x, edge_index_dict, attribute_dict)
 
         # x = self.gnn2_embed(x, adjacency_matrices).float()
         # x_2 = global_mean_pool(z_2, batch)
 
         # x = self.classifier(x_2)
         # x = F.log_softmax(x, dim=-1)
-        return x, S_1, S_2
+        return x, S_1

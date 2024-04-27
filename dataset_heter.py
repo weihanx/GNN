@@ -7,7 +7,6 @@ import torch
 import glob
 import warnings
 
-
 from fractions import Fraction
 from torch_geometric.utils import add_self_loops
 from torch_geometric.data import Data
@@ -33,7 +32,7 @@ from torch_geometric.nn.norm import LayerNorm
 import matplotlib.pyplot as plt
 from pyScoreParser.musicxml_parser.mxp import MusicXMLDocument
 from torch_geometric.nn import dense_diff_pool
-from torch.nn.parallel import DistributedDataParallel as DDP # parallel
+from torch.nn.parallel import DistributedDataParallel as DDP  # parallel
 import pyScoreParser.score_as_graph as score_graph
 import pickle
 import torch.nn.functional as F
@@ -53,8 +52,10 @@ import xml.etree.ElementTree as ET
 import torch.nn as nn
 import torch_geometric.transforms as T
 
+
 def some_function():
     warnings.warn("This is a warning message!")
+
 
 pitch_class_map = {
     'Cbb': 0,
@@ -110,22 +111,22 @@ duration_map = {
     '1': 14, '8': 15, '4': 16
 }
 
-
-
 """
 process the training data
 """
+
+
 class HeterGraph(Dataset):
-    def __init__(self, root, train_names = None, transform=None, pre_transform=None, add_self_loops = False):
+    def __init__(self, root, train_names=None, transform=None, pre_transform=None, add_self_loops=False):
         """
         root: where my dataset should be stored: it will automatically saved at root/processed
         """
-        self.train_names = train_names #
+        self.train_names = train_names  #
         self.add_self_loops = add_self_loops
         # print(f"self.processed_dir = {self.processed_dir}") # homodata/processed
-        super(HeterGraph, self).__init__(root, transform, pre_transform) # invoke process when necessary
+        super(HeterGraph, self).__init__(root, transform, pre_transform)  # invoke process when necessary
         # self.data_list = []
-        self.data_list = [] # according to my class, each object is tuple(data, matrix)
+        self.data_list = []  # according to my class, each object is tuple(data, matrix)
 
         for file_name in self.processed_file_names:
             file_path = os.path.join(self.processed_dir, file_name)
@@ -135,10 +136,9 @@ class HeterGraph(Dataset):
                 print(f"Missing processed file: {file_path}")
         self.root = root
 
-
     def len(self):
         # print(f"call len = {len(self.data_list)}")
-        
+
         return len(self.processed_file_names)
 
     def get(self, idx):
@@ -156,27 +156,29 @@ class HeterGraph(Dataset):
         """
         If these files are found, processed will be skipped, make sure number of names match, I can shuffle
         """
-        
+
         return [f'{i}_processed.pt' for i in range(1114)]
 
-    def one_hot_convert(self,mapped_pitch, num_class):
+    def one_hot_convert(self, mapped_pitch, num_class):
         # number of samples, number of class
         one_hot_encoded = np.zeros((len(mapped_pitch), num_class))
         for i, pitch in enumerate(mapped_pitch):
             one_hot_encoded[i, pitch] = 1
         return one_hot_encoded
-    
+
     def pad_cluster(self, final_size, cluster_tensor):
         current_height, _ = cluster_tensor.shape
         padding_top = 0  # No padding at the top
         padding_left = 0  # No padding on the left
         padding_bottom = final_size - current_height - padding_top  # pad new nodes, all zero
-        padding_right = 0 
+        padding_right = 0
 
         # Pad the tensor
-        padded_cluster = F.pad(cluster_tensor, (padding_left, padding_right, padding_top, padding_bottom), 'constant', 0)
+        padded_cluster = F.pad(cluster_tensor, (padding_left, padding_right, padding_top, padding_bottom), 'constant',
+                               0)
 
         return padded_cluster
+
     def normalize(self, array):
         return (array - array.min()) / (array.max() - array.min())
 
@@ -185,6 +187,7 @@ class HeterGraph(Dataset):
         if array.dtype == np.object_:
             array = np.array(array, dtype=float)  # Converts to float, handling potential issues with object types
         return torch.tensor(array, dtype=torch.float)
+
     def process(self):
         self.data_list = []
         # print(f"Starting process. Initial train_names length: {len(self.train_names)}")
@@ -203,29 +206,27 @@ class HeterGraph(Dataset):
                 # print(f"Processing xml {xml_file_path}")
                 xml_file_path = Path(xml_file_path)
                 XMLDocument = MusicXMLDocument(str(xml_file_path))
-                
 
                 # We have six features: Pitch Name, Midi Number, Octave, Duration, MeaureNumber: should check length of the notes
                 notes = XMLDocument.get_notes()
 
-                note_measure_num = [note.measure_number for note in notes] # Measure Number
+                note_measure_num = [note.measure_number for note in notes]  # Measure Number
 
-                mapped_midi = [midi_map[str(note.pitch[1])] for note in notes] # Midi Number
-                midi_features_list =  self.one_hot_convert(mapped_midi, 58)
-                
+                mapped_midi = [midi_map[str(note.pitch[1])] for note in notes]  # Midi Number
+                midi_features_list = self.one_hot_convert(mapped_midi, 58)
+
                 mapped_pitch = [pitch_class_map[note.pitch[0]] for note in notes]
-                pitch_features_list = self.one_hot_convert(mapped_pitch, 35) # pitch class: categorical value
-               
+                pitch_features_list = self.one_hot_convert(mapped_pitch, 35)  # pitch class: categorical value
 
-                mapped_duration = [duration_map[str(note.note_duration.duration)] for note in notes] # duration 
+                mapped_duration = [duration_map[str(note.note_duration.duration)] for note in notes]  # duration
                 duration_features_list = self.one_hot_convert(mapped_duration, 17)
                 ## notes information with music21 library
-                 # max notes
+                # max notes
                 mapped_position = [i for i in range(len(notes))]
-                position_features_list =  self.one_hot_convert(mapped_position, 50) # max number of notes
+                position_features_list = self.one_hot_convert(mapped_position, 50)  # max number of notes
                 try:
                     # Convert warnings to exceptions
-                    score = converter.parse(xml_file_path) # Path object?
+                    score = converter.parse(xml_file_path)  # Path object?
                 except Warning as w:
                     print("Caught a warning:", w)
                     print(f"file = {directory}")
@@ -244,7 +245,7 @@ class HeterGraph(Dataset):
                         current_offset += duration
                         offsetlist.append(current_offset)
                         # note_features_list_duration.append(duration)
-                    elif n.tie.type in ["stop", "continue"]: # only update the offset, not append notes
+                    elif n.tie.type in ["stop", "continue"]:  # only update the offset, not append notes
                         print(f" directory with tie = {directory}")
                         duration = n.duration.quarterLength
                         current_offset += duration
@@ -259,9 +260,8 @@ class HeterGraph(Dataset):
                 # range_value = max(offsetlist) - min_value
                 # normalized_offsetlist = [(x-min_value)/range_value for x in offsetlist] # normalized offset list
 
-
                 # We have four edge types: forward, onset, sustain, rest
-                notes_graph = score_graph.make_edge(notes) # edge list: (start note, end note, type of edge)
+                notes_graph = score_graph.make_edge(notes)  # edge list: (start note, end note, type of edge)
                 onset_edges = []
                 voice_edges = []
                 forward_edges = []
@@ -285,7 +285,6 @@ class HeterGraph(Dataset):
                     elif edge[2] == 'sustain':
                         sustain_edges.append(edge[:2])
 
-
                 # midi_features = self.normalize(np.array(midi_features_list))
                 # duration_features = self.normalize(np.array(note_features_list_duration))
                 # pitch_features = self.normalize(np.array(pitch_features_list))
@@ -294,22 +293,21 @@ class HeterGraph(Dataset):
                 # ocativelist = self.normalize(np.array(ocativelist))
                 # encoder = OneHotEncoder(sparse=False)
                 # one_hot_encoded_durations = encoder.fit_transform(duration_features)
-                
+
                 midi_features = np.array(midi_features_list)
                 duration_features = np.array(duration_features_list)
                 # print(f"duration = {set(note_features_list_duration)}")
                 pitch_features = np.array(pitch_features_list)
                 position_features = np.array(position_features_list)
                 # note_measure_num_features = np.array(note_measure_num)
-                normalized_offsetlist = np.array(offsetlist) # not normalized
-                
+                normalized_offsetlist = np.array(offsetlist)  # not normalized
 
                 ocativelist = np.array(ocativelist)
-                                 
-                pitch_features = self.to_float_tensor(pitch_features) # categorical
-                midi_features = self.to_float_tensor(midi_features) # categorical
-                duration_features = self.to_float_tensor(duration_features) # categorical
-                position_features = self.to_float_tensor(position_features) # categorical
+
+                pitch_features = self.to_float_tensor(pitch_features)  # categorical
+                midi_features = self.to_float_tensor(midi_features)  # categorical
+                duration_features = self.to_float_tensor(duration_features)  # categorical
+                position_features = self.to_float_tensor(position_features)  # categorical
                 # note_measure_num_features = self.to_float_tensor(note_measure_num_features).unsqueeze(1)
                 normalized_offsetlist = self.to_float_tensor(normalized_offsetlist).unsqueeze(1)
                 ocativelist = self.to_float_tensor(ocativelist).unsqueeze(1)
@@ -324,7 +322,8 @@ class HeterGraph(Dataset):
                 # note_features = torch.cat([pitch_features, duration_features], dim=1)
                 # print(f"shape of features = {midi_features.shape}, {duration_features.shape}, {pitch_features.shape}")
                 # print(f"shape of features = {position_features.shape}")
-                note_features =  torch.cat([pitch_features, midi_features, duration_features, normalized_offsetlist], dim=1)
+                note_features = torch.cat([pitch_features, midi_features, duration_features, normalized_offsetlist],
+                                          dim=1)
                 # Stack all the features together to create a single array with all features
                 # Each feature becomes a column in the resulting array
 
@@ -334,7 +333,6 @@ class HeterGraph(Dataset):
                 onset_edge_index = np.array(onset_edges)
                 sustain_edge_index = np.array(sustain_edges)
                 rest_edge_index = np.array(rest_edges)
-
 
                 next_edge_index = torch.tensor(next_edge_index, dtype=torch.long).t().contiguous()
                 voice_edge_index = torch.tensor(voice_edge_index, dtype=torch.long).t().contiguous()
@@ -364,6 +362,9 @@ class HeterGraph(Dataset):
                         else:
                             # Directly set the edge_index tensor
                             data1[edge_type].edge_index = edge_index
+                            num_edges = data1[edge_type].edge_index.shape[1]
+                            edge_weights = torch.ones(num_edges)
+                            data1[edge_type].edge_attr = edge_weights
                             # stats[edge_type[1]].add(edge_index.shape[1])
                 if self.add_self_loops == True:
                     for edge_type, edge_index in edge_types_and_indices:
@@ -376,35 +377,38 @@ class HeterGraph(Dataset):
                             num_nodes = data1[edge_type[0]].NUM_NODES  # Adjust based on actual source node type
                             edge_index_with_loops, _ = add_self_loops(edge_index, num_nodes=num_nodes)
                             data1[edge_type].edge_index = edge_index_with_loops
-                            # stats[edge_type[1]].add(edge_index.shape[1])
+
+                            num_edges = data1[edge_type].edge_index.shape[1]
+                            edge_weights = torch.ones(num_edges)
+                            data1[edge_type].edge_attr = edge_weights
 
                 if self.extract_key_signature(xml_file_path) is not None:
                     key = self.extract_key_signature(xml_file_path)
                     # print(f"key = {key}")
-                    key = int(key) # get the key sigature
+                    key = int(key)  # get the key sigature
                     # since label cannot be negative, label = label + 7
-                    key = key+7
-                    if key in range(0,15): # should be valid fifth
+                    key = key + 7
+                    if key in range(0, 15):  # should be valid fifth
                         # print(f"key = {key} is in correct range")
                         data1.y = torch.tensor([key], dtype=torch.long)
                         if self.transform:
                             data1 = self.transform(data1)
-                            
+
                             # print(data1['note'].x.shape[0])
                             # final_size = data1['note'].x.shape[0]
                         # replace suffix
 
                         try:
-                    # Placeholder for Sck analysis, could be numpy
+                            # Placeholder for Sck analysis, could be numpy
                             with open(pkl_file_path, 'rb') as file:
                                 clusters = pickle.load(file)
                             # print(f"len of cluster = {len(clusters)}")
                             cluster_tuple = ()
                             assert clusters[0].shape[0] == len(notes)
-                            
+
                             for cluster in clusters:
                                 # print(f"cluster is = {cluster}")
-                                cur_cluster = torch.tensor(cluster,dtype=torch.float32)
+                                cur_cluster = torch.tensor(cluster, dtype=torch.float32)
                                 # if self.transform:
                                 #     cur_cluster = self.pad_cluster(final_size, cur_cluster)
                                 cluster_tuple = cluster_tuple + (cur_cluster,)
@@ -415,10 +419,9 @@ class HeterGraph(Dataset):
                     else:
                         print(f"key fifths not in the range of [-7,7] {xml_file_path}")
                         continue
-                        
+
                         # also need to pad cluster matrix
-                
-                    
+
                     data_dict = {}
                     data_dict["name"] = str(xml_file_path).removesuffix('.xml')
                     data_dict["data"] = data1
@@ -434,8 +437,6 @@ class HeterGraph(Dataset):
         #     json.dump(midi_class, file)
         # with open("duration_map", 'w') as file:
         #     json.dump(duration_class, file)
-
-
 
     def extract_key_signature(self, file_path):
         # Load and parse the MusicXML file
@@ -453,10 +454,9 @@ class HeterGraph(Dataset):
                         return key_fifths
         return None
 
-
     def hetero_to_networkx(self, obj_idx):
         # Define a color map for edge types
-        
+
         edge_type_color = {
             'forward': 'red',
             'onset': 'green',
@@ -468,12 +468,12 @@ class HeterGraph(Dataset):
         file_path = os.path.join(self.processed_dir, file_name)
         hetero_data = torch.load(file_path)
         G = nx.DiGraph()  # Directed graph to accommodate directed edges, if needed
-        
+
         # Add nodes
         for node_type in hetero_data.node_types:
             for node_id in range(hetero_data[node_type].NUM_NODES):
                 G.add_node(f"{node_type}_{node_id}", type=node_type)
-        
+
         # Add edges with colors
         for edge_type in hetero_data.edge_types:
             color = edge_type_color.get(edge_type[1], 'black')  # Default to black if type not found
@@ -481,39 +481,26 @@ class HeterGraph(Dataset):
                 src_node = f"{edge_type[0]}_{source}"
                 tgt_node = f"{edge_type[2]}_{target}"
                 G.add_edge(src_node, tgt_node, type=edge_type[1], color=color)
-        
+
         return G
 
-"""
-            data1['note', 'forward', 'note'].edge_index = next_edge_index # most important
-            # data1['note', 'voice', 'note'].edge_index = voice_edge_index
-            # data1['note', 'slur', 'note'].edge_index = slur_edge_index # remove 
-            data1['note', 'onset', 'note'].edge_index = onset_edge_index # important
-            data1['note', 'sustain', 'note'].edge_index = sustain_edge_index # important
-            data1['note', 'rest', 'note'].edge_index = rest_edge_index
-"""
 
-
-
-
-
-if __name__ == "__main__": # This will not run when importing
-
+if __name__ == "__main__":
     with open("sck_samples.txt", "r") as file:
         train_names = file.readlines()
     train_names = [line.strip() for line in train_names]
 
-    dataset = HeterGraph(root ="processed/heterdatacleaned/", train_names = train_names)
-#
+    dataset = HeterGraph(root="processed/heterdatacleaned/", train_names=train_names)
+    #
     # transform = Pad(max_num_nodes, max_num_edges, node_padding,  edge_padding)
-#
-#     dataset = HeterGraph(root ="processed/heterdata/", train_names = train_names, transform = transform, add_pad_mask =True)
-#
-#     dataset = HomoGraph(root ="processed/homodata/", train_names = train_names, transform = transform)
-#
-#     print(f"data1 {dataset[0]}")
+    #
+    #     dataset = HeterGraph(root ="processed/heterdata/", train_names = train_names, transform = transform, add_pad_mask =True)
+    #
+    #     dataset = HomoGraph(root ="processed/homodata/", train_names = train_names, transform = transform)
+    #
+    #     print(f"data1 {dataset[0]}")
     train_loader = DataLoader(dataset, batch_size=1)
-    
+
     for data, sck_cluster_tuple in train_loader:
         print(f"data = {data}, {sck_cluster_tuple[0][0].shape}, {sck_cluster_tuple[1][0].shape}")
 

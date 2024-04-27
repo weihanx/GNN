@@ -44,9 +44,9 @@ def train_sck(model, loss_fn, train_loader, class_weight):
         data = databatch['data']
         sck_mat_tuple = databatch['cluster']
         data = data.to(DEVICE)
-        final_emb, s1_pred, s2_pred = model(data.x_dict, data.edge_index_dict)
+        final_emb, s1_pred = model(data)
 
-        check_NaN(final_emb, filename, optimizer)
+        # check_NaN(final_emb, filename, optimizer)
 
         filename.parent.mkdir(parents=True, exist_ok=True)
 
@@ -58,10 +58,10 @@ def train_sck(model, loss_fn, train_loader, class_weight):
         s1 = s1.to(DEVICE)
         s2 = s2.to(DEVICE)
         loss2 = loss_fn(s1_pred.float(), s1.float())
-        loss3 = loss_fn(s2_pred.float(), s2.float())
-        loss = class_weight[0] * loss2 + class_weight[1] * loss3
-        train_loss.append(loss.item())
-        loss.backward()
+        # loss3 = loss_fn(s2_pred.float(), s2.float())
+        # loss = class_weight[0] * loss2 + class_weight[1] * loss3
+        train_loss.append(loss2.item())
+        loss2.backward()
 
         optimizer.step()
         # _, predicted_labels = torch.max(out, 1)
@@ -83,11 +83,11 @@ def validate_sck(model, loss_fn, valid_loader, class_weight):
             data = databatch['data']
             sck_mat_tuple = databatch['cluster']
             data = data.to(DEVICE)
-            final_emb, s1_pred, s2_pred = model(data.x_dict, data.edge_index_dict)
-            try:
-                check_NaN(final_emb, filename, optimizer)
-            except ValueError as e:
-                break
+            final_emb, s1_pred = model(data)
+            # try:
+            #     check_NaN(final_emb, filename, optimizer)
+            # except ValueError as e:
+            #     break
             true_label = data.y
             filename.parent.mkdir(parents=True, exist_ok=True)
 
@@ -99,10 +99,10 @@ def validate_sck(model, loss_fn, valid_loader, class_weight):
             s1 = s1.to(DEVICE)
             s2 = s2.to(DEVICE)
             loss2 = loss_fn(s1_pred.float(), s1.float())
-            loss3 = loss_fn(s2_pred.float(), s2.float())
-            loss = class_weight[0] * loss2 + class_weight[1] * loss3
+            # loss3 = loss_fn(s2_pred.float(), s2.float())
+            # loss = class_weight[0] * loss2 + class_weight[1] * loss3
             count += 1
-            val_loss.append(loss.item())
+            val_loss.append(loss2.item())
             # _, predicted_labels = torch.max(out, 1)
 
             # correct += (predicted_labels == data.y).sum().item()
