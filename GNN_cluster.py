@@ -1,66 +1,147 @@
+# This is used for cluster layer
+
+
 import torch_utils
-from torch_geometric.nn import HeteroConv, SAGEConv, Linear
-import torch
+from math import ceil
+from torch_geometric.nn.norm import LayerNorm
 import torch.nn.functional as F
+from torch_geometric.nn import HeteroConv, GCNConv, SAGEConv, GATConv, Linear
+from torch_geometric.nn.conv import DirGNNConv
+from torch_geometric.nn.conv import MessagePassing
+import torch
 
+from torch.nn import Dropout
+from torch_geometric.nn import global_mean_pool
 from GNN_backbone import HeteroGNN
-from config import DEVICE
-
 
 class GNN_Cluster(torch.nn.Module):
-    def __init__(self, hidden_dim, num_classes, device=DEVICE):
+    def __init__(self, embedding_dim, hidden_dim, num_classes, device = "cuda"):
         super(GNN_Cluster, self).__init__()
         self.device = device
 
-        self.linear = torch.nn.Linear(hidden_dim, 1).to(device)
+        self.gnn1_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden_channel, output_channel
+        # self.custom_weight_init(self.gnn1_embed)
+        self.gnn2_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden, output
+        # self.custom_weight_init(self.gnn2_embed)
 
-        torch.nn.init.xavier_uniform_(self.linear.weight)  # avoid all zero or all
+        self.linear = torch.nn.Linear(hidden_dim, 1).to(device) 
+
+        torch.nn.init.xavier_uniform_(self.linear.weight) # avoid all zero or all
 
         self.classifier = Linear(hidden_dim, num_classes)
         self.dropout = torch.nn.Dropout(p=0.5)
 
+    def init_weights(self, m):
+        if isinstance(m, SAGEConv):
+            torch.nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
+            if m.bias is not None:
+                torch.nn.init.zeros_(m.bias)
+
+
     def euclidean_distance_matrix(self, x):
         num_node, num_feat = x.shape
         dist_list = []
+        # print(f"num_ed node = {num_node}")
         for i in range(num_node):
-            for j in range(num_node):
+            for j in range(i, num_node):
+                # print(f"comb = {i}, comb = {j}")
                 diff = x[i] - x[j]
                 res = diff * diff
                 dist_list.append(res)
-        distance_mat = torch.stack(dist_list, dim=0)
-
+        distance_mat = torch.stack(dist_list, dim=0) # add new dimension
+        # print(f"shape of distance mat = {distance_mat.shape}")
+        
         return distance_mat
+    def coord_to_adj(self, edge_index_dict,attribute_dict, num_nodes):
+        """
+        change to adj matrix for pooling
+        """
+        adj = {}
+        # print(f"num nodes = {num_nodes}")  # should be the same as the x shape
+        for edge, mat in edge_index_dict.items():
+            adj_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float32, device=self.device)
+            for idx, (source, target) in enumerate(mat.t()):
+                adj_matrix[source, target] = attribute_dict[edge][idx]
+                adj[edge] = adj_matrix
 
+        return adj
+
+    def conditional_softmax(self, matrix):
+        # only softmax on adj matrix that are not all zeros. If they have weights, it should sum up to 1
+        # Initialize the output matrix with the original values
+        output = matrix.clone()
+
+        # Iterate over each row in the matrix
+        for i in range(matrix.size(0)):
+            if torch.sum(matrix[i, :]) != 0:
+                # Apply softmax only to rows that are not all zeros
+                output[i, :] = F.softmax(matrix[i, :], dim=0)
+            else:
+                # For rows that are all zeros, keep them as is
+                output[i, :] = matrix[i, :]
+
+        return output
+    
     def adj_to_coord(self, adj_matrix):
-        """
-        change back too coordinates for gnn model
-        """
         coords = {}
+        edge_attributes = {}
         for edge, adj in adj_matrix.items():
-            edge_index = adj.nonzero().t()
-            coords[edge] = edge_index
+            indices = adj.nonzero(as_tuple=True)
+            edge_index = torch.stack(indices).t()
+            weights = adj[indices]
+            
+            coords[edge] = edge_index.t()
+            edge_attributes[edge] = weights
 
-        return coords
+        return coords, edge_attributes
 
-    def forward(self, x, adjacency_matrices):
+
+    def custom_weight_init(self, model):
+        for m in model.modules():
+            if isinstance(m, HeteroConv):
+                for _, conv in m.convs.items():  # m.convs is the dictionary holding the convolutions
+                    self.init_weights(conv)
+
+    def forward(self, x, edge_index_dict, attribute_dict):
+        # edge_attributes = {key: edge_index_dict[key].edge_attr for key in edge_index_dict}
+        # print(f"edge_index_dict = {edge_index_dict}, attribute_dict = {attribute_dict}")
         num_nodes = x['note'].shape[0]
+        z_0 = self.gnn1_embed(x, edge_index_dict, attribute_dict).float()  # 70, 16
 
-        distance_matrix = self.euclidean_distance_matrix(x['note'])
-        distance_vector = self.linear(distance_matrix).to(self.device).float()
-        grouping_vector = torch.sigmoid(distance_vector)
+        # print(f"z_0 = {z_0.shape}") # contain nan
+        # for edge_type, _ in edge_index_dict.items():
+        #     if edge_index_dict[edge_type].numel() == 0:
+        #         edge_index_dict[edge_type]= torch.empty((2, 0), dtype=torch.long).to(self.device)
+        #         edge_index_dict[edge_type].edge_attr = torch.empty((2, 0), dtype=torch.long).to(self.device)
+        dist_vec = self.euclidean_distance_matrix(z_0) # (51*25, 200)
+        # print(f"before linear = {M}")
+        dist_vec = self.linear(dist_vec).to(self.device).float()
 
-        grouping_matrix = grouping_vector.reshape((num_nodes, num_nodes))
-        grouping_matrix.requires_grad_(True)
-        grouping_matrix = grouping_matrix.unsqueeze(0)
+        dist_vec = torch.sigmoid(dist_vec) # shape is (51*25, 1)
+        dist_vec = dist_vec.squeeze()
+        # print(f"shape of M_G = {M_G.shape}")
+        # resize to upper triangular matrix
+        tri_M_G = torch.zeros((num_nodes, num_nodes),device = dist_vec.device)
+        row_indices, col_indices = torch.triu_indices(num_nodes, num_nodes, offset=0)
+        # flip 
+        tri_M_G[row_indices, col_indices] = dist_vec
+        tri_M_G_T = tri_M_G.t()
+        tri_M_G_T = tri_M_G + tri_M_G_T
+        tri_M_G.requires_grad_(True)
+        # ---- use package -- # 
+        tri_M_G = tri_M_G.unsqueeze(0)  # only need for build-in function
+        # print(f" S1: M_G = {new_M_G}")
+        conv_sqrt = torch_utils.MPA_Lya.apply(tri_M_G)
+        S_1 = conv_sqrt.squeeze().float()  
 
-        conv_sqrt = torch_utils.MPA_Lya.apply(grouping_matrix)
-        clustering_matrix = conv_sqrt.squeeze().float()
-        clustering_matrix = F.softmax(clustering_matrix, dim=1)
+        adj = self.coord_to_adj(edge_index_dict, attribute_dict, num_nodes)
+        adj_1 = {}
+        x['note'] = torch.matmul(S_1, x['note'])
+        # print(f"pooling matrix = {S}")
+        num_nodes = x['note'].shape[0]
+        for edge_type, A in adj.items():
+            result = torch.matmul(torch.matmul(S_1, A),S_1).float()
+            adj_1[edge_type] = self.conditional_softmax(result)# the weight should sum up to 1
 
-        x['note'] = torch.matmul(clustering_matrix, x['note'])
-
-        for edge_type, A in adjacency_matrices.items():
-            result = torch.matmul(torch.matmul(clustering_matrix, A), clustering_matrix).float()
-            adjacency_matrices[edge_type] = result
-
-        return x, adjacency_matrices, clustering_matrix
+        edge_dict_1, attribute_dict = self.adj_to_coord(adj_1)
+        return x, edge_dict_1, attribute_dict, S_1

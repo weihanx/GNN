@@ -180,6 +180,36 @@ class HeterGraph(Dataset):
     def normalize(self, array):
         return (array - array.min()) / (array.max() - array.min())
 
+
+    def find_forward_nearest_notes_strict(self, notes):
+        matrix_nearest_up = []
+        matrix_nearest_down = []
+        
+        for i in range(len(notes)):
+            current_note = notes[i]
+            nearest_up = None
+            nearest_down = None
+            nearest_up_index = None
+            nearest_down_index = None
+            
+            # Scan the remaining notes in the list after the current note
+            for j in range(i + 1, len(notes)):
+                following_note = notes[j]
+                if following_note > current_note and (nearest_up is None or following_note < nearest_up):
+                    nearest_up = following_note
+                    nearest_up_index = j
+                if following_note < current_note and (nearest_down is None or following_note > nearest_down):
+                    nearest_down = following_note
+                    nearest_down_index = j
+            
+            # Only append to the matrix if a valid nearest note index is found
+            if nearest_up_index is not None:
+                matrix_nearest_up.append([i, nearest_up_index])
+            if nearest_down_index is not None:
+                matrix_nearest_down.append([i, nearest_down_index])
+        
+        return matrix_nearest_up, matrix_nearest_down
+    
     def to_float_tensor(self, array):
         # Convert array to a numeric dtype if it's not already, then to a torch.tensor
         if array.dtype == np.object_:
@@ -336,12 +366,18 @@ class HeterGraph(Dataset):
                 rest_edge_index = np.array(rest_edges)
 
 
-                next_edge_index = torch.tensor(next_edge_index, dtype=torch.long).t().contiguous()
-                voice_edge_index = torch.tensor(voice_edge_index, dtype=torch.long).t().contiguous()
-                slur_edge_index = torch.tensor(slur_edge_index, dtype=torch.long).t().contiguous()
-                onset_edge_index = torch.tensor(onset_edge_index, dtype=torch.long).t().contiguous()
-                sustain_edge_index = torch.tensor(sustain_edge_index, dtype=torch.long).t().contiguous()
-                rest_edge_index = torch.tensor(rest_edge_index, dtype=torch.long).t().contiguous()
+                matrix_nearest_up, matrix_nearest_down = self.find_forward_nearest_notes_strict(mapped_midi)
+                matrix_nearest_up = np.array(matrix_nearest_up)
+                matrix_nearest_down = np.array(matrix_nearest_down)
+                # print(f"shape of nearest up = {matrix_nearest_up}, shape of nearest down = {matrix_nearest_down}")
+                next_edge_index = torch.tensor(next_edge_index, dtype=torch.int64).t().contiguous()
+                voice_edge_index = torch.tensor(voice_edge_index, dtype=torch.int64).t().contiguous()
+                slur_edge_index = torch.tensor(slur_edge_index, dtype=torch.int64).t().contiguous()
+                onset_edge_index = torch.tensor(onset_edge_index, dtype=torch.int64).t().contiguous()
+                sustain_edge_index = torch.tensor(sustain_edge_index, dtype=torch.int64).t().contiguous()
+                rest_edge_index = torch.tensor(rest_edge_index, dtype=torch.int64).t().contiguous()
+                matrix_nearest_up_index = torch.tensor(matrix_nearest_up, dtype=torch.int64).t().contiguous()
+                matrix_nearest_down_index = torch.tensor(matrix_nearest_down, dtype=torch.int64).t().contiguous()
 
                 data1 = HeteroData()
                 data1['note'].x = note_features  # node_features is a tensor of shape [num_notes, 4]
@@ -353,7 +389,10 @@ class HeterGraph(Dataset):
                     (('note', 'onset', 'note'), onset_edge_index),
                     (('note', 'sustain', 'note'), sustain_edge_index),
                     (('note', 'rest', 'note'), rest_edge_index),
+                    (('note', 'up', 'note'), matrix_nearest_up_index),
+                    (('note', 'down', 'note'), matrix_nearest_down_index),
                 ]
+                # init weights:
                 # Check and set edge_index for each edge type
                 if self.add_self_loops == False:
                     for edge_type, edge_index in edge_types_and_indices:
@@ -364,6 +403,9 @@ class HeterGraph(Dataset):
                         else:
                             # Directly set the edge_index tensor
                             data1[edge_type].edge_index = edge_index
+                            num_edges = data1[edge_type].edge_index.shape[1] 
+                            edge_weights = torch.ones(num_edges)
+                            data1[edge_type].edge_attr = edge_weights # should be a list
                             # stats[edge_type[1]].add(edge_index.shape[1])
                 if self.add_self_loops == True:
                     for edge_type, edge_index in edge_types_and_indices:
@@ -376,6 +418,9 @@ class HeterGraph(Dataset):
                             num_nodes = data1[edge_type[0]].NUM_NODES  # Adjust based on actual source node type
                             edge_index_with_loops, _ = add_self_loops(edge_index, num_nodes=num_nodes)
                             data1[edge_type].edge_index = edge_index_with_loops
+                            num_edges = data1[edge_type].edge_index.shape[1] 
+                            edge_weights = torch.ones(num_edges)
+                            data1[edge_type].edge_attr = edge_weights
                             # stats[edge_type[1]].add(edge_index.shape[1])
 
                 if self.extract_key_signature(xml_file_path) is not None:

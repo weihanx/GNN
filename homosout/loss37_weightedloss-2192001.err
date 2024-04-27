@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/home/users/wx83/GNN_baseline/GNN/train.py", line 271, in <module>
+    train_loss = train_sck(model, loss_fn, train_loader, CLASS_WEIGHT)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/users/wx83/GNN_baseline/GNN/train.py", line 119, in train_sck
+    loss2 = loss_fn(s1_pred.float(), s1.float()) 
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: WeightedNLLLoss.__init__() takes 1 positional argument but 3 were given
