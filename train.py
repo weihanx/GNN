@@ -59,6 +59,7 @@ Dataset Loading
 start_logger()
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
 
 TRIAN_NAMES = "train-names.txt"
 SAVE_FOLDER = "hetergraph0422_4feature/"

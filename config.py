@@ -4,7 +4,8 @@ import torch.nn.functional as F
 import torch
 import torch.nn as nn
 # ROOT_PATH = "C:\\Users\\88ste\\PycharmProjects\\forks\\gnn-music-analysis" #Stephen
-ROOT_PATH = "/home/users/wx83/GNN_baseline/gnn-music-analysis/final_code" #Weihan
+# ROOT_PATH = "/home/users/wx83/GNN_baseline/gnn-music-analysis/final_code" #Weihan
+ROOT_PATH = "/usr/xtmp/yz705/GNN"
 
 class MatrixNormLoss(nn.Module):
     def __init__(self, ord='fro'):

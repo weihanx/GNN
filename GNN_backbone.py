@@ -52,4 +52,3 @@ class HeteroGNN(torch.nn.Module):
         x_dict['note'] = self.norm_2(x_dict['note'])
 
         return x_dict['note']
-
