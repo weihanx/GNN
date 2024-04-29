@@ -1,4 +1,4 @@
-from torch_geometric.nn import HeteroConv, SAGEConv, Linear
+from torch_geometric.nn import Linear
 import torch
 
 from GNN_backbone import HeteroGNN
@@ -7,16 +7,13 @@ from config import DEVICE
 
 
 class GroupMat(torch.nn.Module):
-    def __init__(self, num_feature=111, embedding_dim=32, hidden_dim=256, num_classes=15, device=DEVICE):
+    def __init__(self, num_feature=111, embedding_dim=32, hidden_dim=64, num_classes=15, device=DEVICE):
         super(GroupMat, self).__init__()
         self.device = device
 
         self.linear_embed = torch.nn.Linear(num_feature, embedding_dim)
 
-
-
         self.gnn_cluster1 = GNN_Cluster(embedding_dim, hidden_dim, num_classes, self.device)
-        # self.gnn_cluster2 = GNN_Cluster(hidden_dim, num_classes)
 
         self.gnn2_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)
         self.classifier = Linear(hidden_dim, num_classes)
@@ -40,7 +37,6 @@ class GroupMat(torch.nn.Module):
         attribute_dict = {edge_type: data[edge_type].edge_attr for edge_type in data.edge_types}
 
         x['note'] = x['note'].float()
-        num_nodes = x['note'].shape[0]
 
         x['note'] = self.linear_embed(x['note'])
 

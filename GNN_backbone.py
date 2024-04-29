@@ -19,6 +19,12 @@ class HeteroGNN(torch.nn.Module):
             ('note', 'sustain', 'note'): gcn_conv,
             ('note', 'rest', 'note'): gcn_conv,
         }, aggr='sum')
+        # self.conv_1 = HeteroConv({
+        #     ('note', 'forward', 'note'): GCNConv(num_input_features, hidden_channels, normalize),
+        #     ('note', 'onset', 'note'): GCNConv(num_input_features, hidden_channels, normalize),
+        #     ('note', 'sustain', 'note'): GCNConv(num_input_features, hidden_channels, normalize),
+        #     ('note', 'rest', 'note'): GCNConv(num_input_features, hidden_channels, normalize),
+        # }, aggr='sum')
         self.norm_1 = LayerNorm(hidden_channels)
 
         gcn_conv_2 = GCNConv(hidden_channels, hidden_channels, normalize)
@@ -26,8 +32,14 @@ class HeteroGNN(torch.nn.Module):
             ('note', 'forward', 'note'): gcn_conv_2,
             ('note', 'onset', 'note'): gcn_conv_2,
             ('note', 'sustain', 'note'): gcn_conv_2,
-            ('note', 'rest', 'note'): gcn_conv_2,
+            ('note', 'rest', 'note'): gcn_conv_2
         }, aggr='sum')
+        # self.conv_2 = HeteroConv({
+        #     ('note', 'forward', 'note'): GCNConv(hidden_channels, hidden_channels, normalize),
+        #     ('note', 'onset', 'note'): GCNConv(hidden_channels, hidden_channels, normalize),
+        #     ('note', 'sustain', 'note'): GCNConv(hidden_channels, hidden_channels, normalize),
+        #     ('note', 'rest', 'note'): GCNConv(hidden_channels, hidden_channels, normalize),
+        # }, aggr='sum')
         self.norm_2 = LayerNorm(hidden_channels)
 
     def forward(self, x, edge_index_dict, attribute_dict, flatten=False):
