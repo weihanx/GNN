@@ -88,21 +88,9 @@ def prepare_pairs(similarity_matrix, labels):
 
     return sp, sn
 
-# # Example usage
-# num_nodes = 10
-# num_classes = 3
+
 # similarity_matrix = torch.randn(num_nodes, num_nodes)  # Random similarity scores
-# labels = torch.rand(num_nodes, num_classes)  # Random soft labels for each node
-# # print(f"simi = {similarity_matrix}")
-# # print(f"labels = {labels}")
-# circle_loss = CircleLoss()
-# sp, sn = prepare_pairs(similarity_matrix, labels)
-# loss = circle_loss(sp, sn)
-# print(f"Circle Loss: {loss.item()}")
-
-# If you integrate this in a training loop, include loss.backward() and optimizer steps as needed.
-
-
+# labels = torch.rand(num_nodes, num_classes)  # Random soft labels for each node, should be one hot
 
 CLASSIFICATION_CRITERION = torch.nn.NLLLoss()
 
