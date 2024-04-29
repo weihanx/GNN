@@ -40,44 +40,34 @@ class WeightedNLLLoss(nn.Module):
         # Step 3: Return the average loss: average loss on this sample
         return torch.mean(weighted_nll_loss)
 
-import torch
-import torch.nn.functional as F
-
 class CircleLoss(torch.nn.Module):
-    def __init__(self, margin=0.4, gamma=80):
+    def __init__(self, margin=0.4, gamma=80, similarity_threshold=0.1):
         super(CircleLoss, self).__init__()
         self.margin = margin
         self.gamma = gamma
+        self.similarity_threshold = similarity_threshold
 
     def prepare_pairs(self, similarity_matrix, labels):
         n = similarity_matrix.size(0)
-        sp = []
-        sn = []
-        
-        # Iterate over each pair of nodes
-        for i in range(n):
-            for j in range(i + 1, n):
-                prob_product = (labels[i] * labels[j]).sum()
-                if prob_product > 0:
-                    sp.append((similarity_matrix[i][j], prob_product.item()))
-                else:
-                    sn.append((similarity_matrix[i][j], prob_product.item()))
+        # Compute similarity between labels
+        label_similarity = torch.matmul(labels, labels.t())
 
-        # Ensure tensors are 2D even if empty
-        print(f"sp = {sp}, sn = {sn}")
-        sp = torch.tensor(sp, dtype=torch.float32) if sp else torch.empty((0, 2), dtype=torch.float32)
-        sn = torch.tensor(sn, dtype=torch.float32) if sn else torch.empty((0, 2), dtype=torch.float32)
-        print(f"sp = {sp.shape}, sn = {sn.shape}")
+        # Determine positive and negative pairs based on similarity threshold
+        positive_mask = label_similarity > self.similarity_threshold
+        negative_mask = label_similarity <= self.similarity_threshold
+
+        # Extract similarities of pairs
+        sp = similarity_matrix[positive_mask]
+        sn = similarity_matrix[negative_mask]
+
         return sp, sn
     
-    def forward(self, similarity_matrix, clusters):
-        sp, sn = self.prepare_pairs(similarity_matrix, clusters)
+    def forward(self, similarity_matrix, labels):
+        sp, sn = self.prepare_pairs(similarity_matrix, labels)
         if sp.nelement() == 0 or sn.nelement() == 0:
-            return torch.tensor(0.0, device=sp.device)  # Handle empty tensors
-
-        wp, wn = sp[:, 1], sn[:, 1]
-        sp, sn = sp[:, 0], sn[:, 0]
+            return torch.tensor(0.0, device=similarity_matrix.device)  # Handle empty tensors
         
+        # Calculate Circle Loss components
         ap = torch.clamp_min(-sp.detach() + 1 + self.margin, min=0.)
         an = torch.clamp_min(sn.detach() + self.margin, min=0.)
 
@@ -87,7 +77,7 @@ class CircleLoss(torch.nn.Module):
         logit_p = -ap * (sp - delta_p) * self.gamma
         logit_n = an * (sn - delta_n) * self.gamma
 
-        loss = wp * F.softplus(torch.logsumexp(logit_p, dim=0)) + wn * F.softplus(torch.logsumexp(logit_n, dim=0))
+        loss = F.softplus(torch.logsumexp(logit_p, dim=0)) + F.softplus(torch.logsumexp(logit_n, dim=0))
         return loss.mean()
 
 
