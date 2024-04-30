@@ -4,9 +4,7 @@ import logging
 import matplotlib.pyplot as plt
 import torch
 
-from utils import start_logger, prepare_data_loaders, prepare_model
-import Sckgroupmat
-import dataset_heter
+from utils import prepare_data_loaders, prepare_model
 from config import *
 
 # torch.manual_seed(42)
@@ -32,6 +30,13 @@ def train_loop(model, train_loader):
 
         train_loss.append(loss2.item())
         loss2.backward()
+        if count % PRINT_EVERY == 0 and PRINT_LOSS:
+            print(filename)
+            print(loss2.item())
+        if count % PRINT_EVERY == 0 and PRINT_MATRICES:
+            print(filename)
+            print(grouping_matrix_pred)
+            print(grouping_matrix)
 
         optimizer.step()
         optimizer.zero_grad()
@@ -61,39 +66,31 @@ def validation_loop(model, valid_loader):
             loss2 = SIM_CRITERION(grouping_matrix_pred.float(), grouping_matrix.float(), target)
 
             val_loss.append(loss2.item())
-            if count % 100 == 0 and PRINT_MATRICES:
-                print(filename)
-                print(grouping_matrix_pred)
-                print(grouping_matrix)
 
     return np.mean(val_loss)
 
 
 if __name__ == "__main__":
-    start_logger()
-
-    dataset_class = dataset_heter.HeterGraph
-    train_loader, valid_loader = prepare_data_loaders(TRAIN_NAMES, SAVE_FOLDER, dataset_class)
+    from model.schenker_GNN_model import GroupMat
+    from dataset_heter import HeterGraph
+    train_loader, valid_loader = prepare_data_loaders(TRAIN_NAMES, SAVE_FOLDER, HeterGraph)
 
     model, optimizer, scheduler = prepare_model(
         NUM_FEAT,
         EMB_DIM,
         HIDDEN_DIM,
         NUM_CLASS,
-        model_class=Sckgroupmat.GroupMat,
+        model_class=GroupMat,
         device=DEVICE
     )
     model.to(DEVICE)
 
-    # Training and validation loop
-    num_epochs = 50
     train_loss_curve = []
     valid_loss_curve = []
     train_acc_curve = []
     valid_acc_curve = []
-    class_weight = [0.7, 0.3]
 
-    for epoch in range(num_epochs):
+    for epoch in range(NUM_EPOCHS):
         train_loss = train_loop(model, train_loader)
         valid_loss = validation_loop(model, valid_loader)
         print(f'Epoch: {epoch + 1}, Training Loss: {train_loss:.4f}, Validation Loss: {valid_loss:.4f}')

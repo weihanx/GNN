@@ -1,38 +1,11 @@
-import logging
-from pathlib import Path
-import sys
-
 from tqdm import tqdm
 
 from config import *
-from torch_geometric.transforms import Pad
 from torch_geometric.loader import DataLoader
 import dataset_heter
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
-
-# from config import MatrixNormLoss
-TRAIN_PERCENT = 0.8
-BATCH_SIZE = 1
-
-LEARNING_RATE = 0.001
-SCHEDULER_GAMMA = 0.1
-MAX_GRAD_NORM = 0.1
-
-
-def start_logger():
-    logging.getLogger('matplotlib.font_manager').disabled = True
-    out_dict = Path(f"{ROOT_PATH}/final_code/Logging")
-    out_dict.mkdir(parents=True, exist_ok=True)
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(message)s",
-        handlers=[
-            logging.FileHandler(out_dict / "key_pred_sage.log", "w"),
-            logging.StreamHandler(sys.stdout),
-        ],
-    )
 
 
 def prepare_data_loaders(train_names, save_folder, transform=None, dataset_class=dataset_heter.HeterGraph):
@@ -43,11 +16,11 @@ def prepare_data_loaders(train_names, save_folder, transform=None, dataset_class
     dataset = dataset_class(
         root=save_folder,
         train_names=train_names,
-        transform=None,  # no need for padding
+        transform=None,
         pre_transform=None
     )
 
-    train_size = int(len(dataset) * TRAIN_PERCENT)  # 5200
+    train_size = int(len(dataset) * TRAIN_PERCENT)
     train_dataset, valid_dataset = torch.utils.data.random_split(dataset, [train_size, len(dataset) - train_size])
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     valid_loader = DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False)

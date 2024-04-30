@@ -1,60 +1,20 @@
-# homograph
-"""
-I only have note and forward edge
-"""
-from torch_geometric.transforms.pad import EdgeTypePadding, NodeTypePadding
 import torch
 import glob
 import warnings
 
-from fractions import Fraction
 from torch_geometric.utils import add_self_loops
-from torch_geometric.data import Data
 import numpy as np
-import torch.nn.functional as F
-from collections import defaultdict
-from torch_geometric.typing import EdgeType, NodeType
-from sklearn.preprocessing import OneHotEncoder
-from pathlib import Path
-import torch_geometric.transforms as transforms
 import networkx as nx
-import json
-from torch_geometric.utils.convert import to_networkx
-import matplotlib.pyplot as plt
-import pickle
 import os
 from pathlib import Path
-import pandas as pd
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-from math import ceil
-from torch_geometric.nn.norm import LayerNorm
-import matplotlib.pyplot as plt
 from pyScoreParser.musicxml_parser.mxp import MusicXMLDocument
-from torch_geometric.nn import dense_diff_pool
-from torch.nn.parallel import DistributedDataParallel as DDP  # parallel
 import pyScoreParser.score_as_graph as score_graph
 import pickle
 import torch.nn.functional as F
-from torch_geometric.nn import HGTConv, Linear
-from torch_geometric.transforms import Pad
-import csv
 from torch_geometric.loader import DataLoader
-from torch_geometric.loader import DenseDataLoader
-from torch_geometric.datasets import OGB_MAG
-from torch_geometric.nn import SAGEConv, to_hetero
-from torch_geometric.nn import HGTConv, Linear
-from torch_geometric.nn import HeteroConv, GCNConv, SAGEConv, GATConv, Linear
-from torch_geometric.nn import global_mean_pool
 from torch_geometric.data import Dataset, HeteroData
 from music21 import *
 import xml.etree.ElementTree as ET
-import torch.nn as nn
-import torch_geometric.transforms as T
-
-
-def some_function():
-    warnings.warn("This is a warning message!")
 
 
 pitch_class_map = {
@@ -110,10 +70,6 @@ duration_map = {
     '30240': 7, '1260': 8, '1680': 9, '3360': 10, '13440': 11, '2': 12, '6': 13,
     '1': 14, '8': 15, '4': 16
 }
-
-"""
-process the training data
-"""
 
 
 class HeterGraph(Dataset):
@@ -196,7 +152,7 @@ class HeterGraph(Dataset):
         # midi_class = defaultdict(int)
         # should load musicxml
         for directory in self.train_names:
-            # print(f"Processing directory {directory}")
+            print(f"Processing directory {directory}")
             pkl_files = []
             pkl_files.extend(glob.glob(f"{directory}/**/*.pkl", recursive=True))
             pkl_file_path = pkl_files[0]
