@@ -80,7 +80,7 @@ def process_raw(filepath):  # I cannot find the json_to_cluster_refactor.py so I
 
 
 def generate_paths(piece):
-    base_path = 'schenkerian_clusters_clean'
+    base_path = 'schenkerian_clusters'
     ground_truth_path = f'{base_path}/{piece}/{piece}.json'
     file_path = f'{base_path}/{piece}/{piece}.pkl'
     return ground_truth_path, file_path
