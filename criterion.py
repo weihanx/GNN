@@ -34,3 +34,44 @@ class WeightedNLLLoss(nn.Module):
 
         # Step 3: Return the average loss: average loss on this sample
         return torch.mean(weighted_nll_loss)
+
+
+class CircleLoss(torch.nn.Module):
+    def __init__(self, margin=0.4, gamma=80, similarity_threshold=0.1):
+        super(CircleLoss, self).__init__()
+        self.margin = margin
+        self.gamma = gamma
+        self.similarity_threshold = similarity_threshold
+
+    def prepare_pairs(self, similarity_matrix, labels):
+        n = similarity_matrix.size(0)
+        # Compute similarity between labels
+        label_similarity = torch.matmul(labels, labels.t())
+
+        # Determine positive and negative pairs based on similarity threshold
+        positive_mask = label_similarity > self.similarity_threshold
+        negative_mask = label_similarity <= self.similarity_threshold
+
+        # Extract similarities of pairs
+        sp = similarity_matrix[positive_mask]
+        sn = similarity_matrix[negative_mask]
+
+        return sp, sn
+
+    def forward(self, similarity_matrix, labels):
+        sp, sn = self.prepare_pairs(similarity_matrix, labels)
+        if sp.nelement() == 0 or sn.nelement() == 0:
+            return torch.tensor(0.0, device=similarity_matrix.device)  # Handle empty tensors
+
+        # Calculate Circle Loss components
+        ap = torch.clamp_min(-sp.detach() + 1 + self.margin, min=0.)
+        an = torch.clamp_min(sn.detach() + self.margin, min=0.)
+
+        delta_p = 1 - self.margin
+        delta_n = self.margin
+
+        logit_p = -ap * (sp - delta_p) * self.gamma
+        logit_n = an * (sn - delta_n) * self.gamma
+
+        loss = F.softplus(torch.logsumexp(logit_p, dim=0)) + F.softplus(torch.logsumexp(logit_n, dim=0))
+        return loss.mean()

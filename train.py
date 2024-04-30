@@ -9,6 +9,16 @@ from config import *
 
 # torch.manual_seed(42)
 
+
+def debug_matrices(grouping_matrix_true, cluster_matrix_pred, grouping_matrix_pred):
+    num_decimals = 2
+    grouping_matrix_true_round = np.round(grouping_matrix_true.detach().numpy(), decimals=num_decimals)
+    grouping_matrix_pred_after = np.round(torch.matmul(cluster_matrix_pred, cluster_matrix_pred.t()).detach().numpy(),
+                                          decimals=num_decimals)
+    grouping_matrix_pred_round = np.round(grouping_matrix_pred.detach().numpy(), decimals=num_decimals)
+    return grouping_matrix_true_round, grouping_matrix_pred_after, grouping_matrix_pred_round
+
+
 def train_loop(model, train_loader):
     logging.debug(f"Training...")
     train_loss = []
@@ -17,26 +27,24 @@ def train_loop(model, train_loader):
         filename = Path(databatch['name'][0])
         data = databatch['data']
         data = data.to(DEVICE)
-        final_embedding, cluster_matrix_pred = model(data)
 
-        filename.parent.mkdir(parents=True, exist_ok=True)
+        cluster_matrix_true = databatch['cluster'][0][0]
+        grouping_matrix_true = torch.matmul(cluster_matrix_true, cluster_matrix_true.t())
 
-        cluster_matrix = databatch['cluster'][0][0]
-        grouping_matrix = torch.matmul(cluster_matrix, cluster_matrix.t())
-        grouping_matrix_pred = torch.matmul(cluster_matrix_pred, cluster_matrix_pred.t())
+        final_embedding, cluster_matrix_pred, grouping_loss, grouping_matrix_pred = model(data, grouping_matrix_true)
 
-        target = torch.ones(grouping_matrix_pred.shape[0])
-        loss2 = SIM_CRITERION(grouping_matrix_pred.float(), grouping_matrix.float(), target)
+        atrue, aafter, apred = debug_matrices(grouping_matrix_true, cluster_matrix_pred, grouping_matrix_pred)
 
-        train_loss.append(loss2.item())
-        loss2.backward()
+        train_loss.append(grouping_loss.item())
+        grouping_loss.backward()
+
         if count % PRINT_EVERY == 0 and PRINT_LOSS:
             print(filename)
-            print(loss2.item())
+            print(grouping_loss.item())
         if count % PRINT_EVERY == 0 and PRINT_MATRICES:
             print(filename)
             print(grouping_matrix_pred)
-            print(grouping_matrix)
+            print(grouping_matrix_true)
 
         optimizer.step()
         optimizer.zero_grad()
@@ -52,20 +60,20 @@ def validation_loop(model, valid_loader):
         for count, databatch in enumerate(valid_loader):
             filename = Path(databatch['name'][0])
             data = databatch['data']
-            sck_mat_tuple = databatch['cluster']
+
+            cluster_matrix_true = databatch['cluster'][0][0]
+            grouping_matrix_true = torch.matmul(cluster_matrix_true, cluster_matrix_true.t())
+
             data = data.to(DEVICE)
-            final_emb, s1_pred = model(data)
+            final_emb, cluster_matrix_pred, grouping_loss, grouping_matrix_pred = model(data, grouping_matrix_true)
 
             filename.parent.mkdir(parents=True, exist_ok=True)
 
-            cluster1 = sck_mat_tuple[0][0]
-            grouping_matrix = torch.matmul(cluster1, cluster1.t())
-            grouping_matrix_pred = torch.matmul(s1_pred, s1_pred.t())
-
-            target = torch.ones(grouping_matrix_pred.shape[0])
-            loss2 = SIM_CRITERION(grouping_matrix_pred.float(), grouping_matrix.float(), target)
-
-            val_loss.append(loss2.item())
+            val_loss.append(grouping_loss.item())
+            if count % PRINT_EVERY == 0 and PRINT_MATRICES:
+                print(filename)
+                print(grouping_matrix_pred)
+                print(grouping_matrix_true)
 
     return np.mean(val_loss)
 

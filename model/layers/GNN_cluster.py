@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from model.layers.GNN_backbone import HeteroGNN
-from config import DEVICE
+from config import DEVICE, GROUPING_CRITERION
 
 
 class GNN_Cluster(torch.nn.Module):
@@ -71,7 +71,7 @@ class GNN_Cluster(torch.nn.Module):
                 adj[edge] = adj_matrix
         return adj
 
-    def forward(self, x, edge_index_dict, attribute_dict):
+    def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true):
         num_nodes = x['note'].shape[0]
 
         x['note'] = self.gnn_embed(x, edge_index_dict, attribute_dict).float()
@@ -81,7 +81,7 @@ class GNN_Cluster(torch.nn.Module):
         grouping_vector = torch.sigmoid(distance_vector)
 
         grouping_matrix = grouping_vector.reshape((num_nodes, num_nodes))
-        grouping_matrix.requires_grad_(True)
+        grouping_loss = GROUPING_CRITERION(grouping_matrix, grouping_matrix_true)
         grouping_matrix = grouping_matrix.unsqueeze(0)
 
         conv_sqrt = torch_utils.MPA_Lya.apply(grouping_matrix)
@@ -95,4 +95,4 @@ class GNN_Cluster(torch.nn.Module):
             result = torch.matmul(torch.matmul(clustering_matrix, A), clustering_matrix).float()
             adjacency_matrices[edge_type] = result
         edge_dict, attribute_dict = self.adj_to_coord(adjacency_matrices)
-        return x, edge_dict, attribute_dict, clustering_matrix
+        return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix

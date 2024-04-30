@@ -31,7 +31,7 @@ class GroupMat(torch.nn.Module):
                 adj[edge] = adj_matrix
         return adj
 
-    def forward(self, data):
+    def forward(self, data, grouping_matrix_true):
         x = data.x_dict
         edge_index_dict = data.edge_index_dict
         attribute_dict = {edge_type: data[edge_type].edge_attr for edge_type in data.edge_types}
@@ -40,11 +40,6 @@ class GroupMat(torch.nn.Module):
 
         x['note'] = self.linear_embed(x['note'])
 
-        x, edge_dict, attribute_dict, S_1 = self.gnn_cluster1(x, edge_index_dict, attribute_dict)
+        x, edge_dict, attribute_dict, S_1, grouping_loss_1, grouping_matrix_pred_1 = self.gnn_cluster1(x, edge_index_dict, attribute_dict, grouping_matrix_true)
 
-        # x = self.gnn2_embed(x, adjacency_matrices).float()
-        # x_2 = global_mean_pool(z_2, batch)
-
-        # x = self.classifier(x_2)
-        # x = F.log_softmax(x, dim=-1)
-        return x, S_1
+        return x, S_1, grouping_loss_1, grouping_matrix_pred_1
