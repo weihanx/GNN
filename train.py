@@ -2,149 +2,105 @@ import numpy as np
 from pathlib import Path
 import logging
 import matplotlib.pyplot as plt
+import torch
 
-from utils import start_logger, prepare_data_loaders, prepare_model
-import Sckgroupmat
-import dataset_heter
+from utils import prepare_data_loaders, prepare_model
 from config import *
 
-torch.manual_seed(42)
-
-def test(loader):
-    model.eval()
-    correct = 0
-    for data in loader:
-        out = model(data.x_dict, data.edge_index_dict, data.batch)
-        pred = out.argmax(dim=1)
-        correct += int((pred == data.y).sum())
-    return correct / len(loader.dataset)
+# torch.manual_seed(42)
 
 
-def check_NaN(final_emb, filename, optimizer):
-    if torch.isnan(final_emb["note"][0][0]):
-        print(f"PROBLEM: {filename}")
-        # raise ValueError()
-    else:
-        print(f"NOT A PROBLEM: {filename}")
+def debug_matrices(grouping_matrix_true, cluster_matrix_pred, grouping_matrix_pred):
+    num_decimals = 2
+    grouping_matrix_true_round = np.round(grouping_matrix_true.detach().numpy(), decimals=num_decimals)
+    grouping_matrix_pred_after = np.round(torch.matmul(cluster_matrix_pred, cluster_matrix_pred.t()).detach().numpy(),
+                                          decimals=num_decimals)
+    grouping_matrix_pred_round = np.round(grouping_matrix_pred.detach().numpy(), decimals=num_decimals)
+    return grouping_matrix_true_round, grouping_matrix_pred_after, grouping_matrix_pred_round
 
 
-def train_sck(model, loss_fn, train_loader, class_weight):
+def train_loop(model, train_loader):
     logging.debug(f"Training...")
     train_loss = []
-    count = 0
-    correct = 0
-    for databatch in train_loader:
+    for count, databatch in enumerate(train_loader):
 
-        optimizer.zero_grad()
-
-        count = count + 1
         filename = Path(databatch['name'][0])
-        # if str(filename) != "schenkerian_clusters\\Septimi_6_trans_c#\\Septimi_6_trans_c#":
-        #     continue
         data = databatch['data']
-        sck_mat_tuple = databatch['cluster']
         data = data.to(DEVICE)
-        final_emb, s1_pred = model(data)
 
-        # check_NaN(final_emb, filename, optimizer)
+        cluster_matrix_true = databatch['cluster'][0][0]
+        grouping_matrix_true = torch.matmul(cluster_matrix_true, cluster_matrix_true.t())
 
-        filename.parent.mkdir(parents=True, exist_ok=True)
+        final_embedding, cluster_matrix_pred, grouping_loss, grouping_matrix_pred = model(data, grouping_matrix_true)
 
-        cluster1 = sck_mat_tuple[0][0]
-        cluster2 = sck_mat_tuple[1][0]
-        s1 = torch.matmul(cluster1, cluster1.t())
-        s2 = torch.matmul(cluster1, cluster2)
-        s2 = torch.matmul(s2, s2.t())
-        s1 = s1.to(DEVICE)
-        s2 = s2.to(DEVICE)
-        loss2 = loss_fn(s1_pred.float(), s1.float())
-        # loss3 = loss_fn(s2_pred.float(), s2.float())
-        # loss = class_weight[0] * loss2 + class_weight[1] * loss3
-        train_loss.append(loss2.item())
-        loss2.backward()
+        atrue, aafter, apred = debug_matrices(grouping_matrix_true, cluster_matrix_pred, grouping_matrix_pred)
+
+        train_loss.append(grouping_loss.item())
+        grouping_loss.backward()
+
+        if count % PRINT_EVERY == 0 and PRINT_LOSS:
+            print(filename)
+            print(grouping_loss.item())
+        if count % PRINT_EVERY == 0 and PRINT_MATRICES:
+            print(filename)
+            print(grouping_matrix_pred)
+            print(grouping_matrix_true)
 
         optimizer.step()
-        # _, predicted_labels = torch.max(out, 1)
+        optimizer.zero_grad()
 
-        # correct += (predicted_labels == data.y).sum().item()
-        # train_acc = correct / count
-    return np.mean(train_loss)  # average loss for this epoch
+    return np.mean(train_loss)
 
 
-def validate_sck(model, loss_fn, valid_loader, class_weight):
+def validation_loop(model, valid_loader):
     logging.debug(f"Validating...")
     model.eval()
     with torch.no_grad():
-        correct = 0
         val_loss = []
-        count = 0
-        for databatch in valid_loader:
+        for count, databatch in enumerate(valid_loader):
             filename = Path(databatch['name'][0])
             data = databatch['data']
-            sck_mat_tuple = databatch['cluster']
+
+            cluster_matrix_true = databatch['cluster'][0][0]
+            grouping_matrix_true = torch.matmul(cluster_matrix_true, cluster_matrix_true.t())
+
             data = data.to(DEVICE)
-            final_emb, s1_pred = model(data)
-            # try:
-            #     check_NaN(final_emb, filename, optimizer)
-            # except ValueError as e:
-            #     break
-            true_label = data.y
+            final_emb, cluster_matrix_pred, grouping_loss, grouping_matrix_pred = model(data, grouping_matrix_true)
+
             filename.parent.mkdir(parents=True, exist_ok=True)
 
-            cluster1 = sck_mat_tuple[0][0]
-            cluster2 = sck_mat_tuple[1][0]
-            s1 = torch.matmul(cluster1, cluster1.t())
-            s2 = torch.matmul(cluster1, cluster2)
-            s2 = torch.matmul(s2, s2.t())
-            s1 = s1.to(DEVICE)
-            s2 = s2.to(DEVICE)
-            loss2 = loss_fn(s1_pred.float(), s1.float())
-            # loss3 = loss_fn(s2_pred.float(), s2.float())
-            # loss = class_weight[0] * loss2 + class_weight[1] * loss3
-            count += 1
-            val_loss.append(loss2.item())
-            # _, predicted_labels = torch.max(out, 1)
+            val_loss.append(grouping_loss.item())
+            if count % PRINT_EVERY == 0 and PRINT_MATRICES:
+                print(filename)
+                print(grouping_matrix_pred)
+                print(grouping_matrix_true)
 
-            # correct += (predicted_labels == data.y).sum().item()
-
-        # val_acc = correct / count
     return np.mean(val_loss)
 
 
 if __name__ == "__main__":
-    start_logger()
-
-    TRAIN_NAMES = "train-names.txt"
-    SAVE_FOLDER = "hetergraph0422_4feature/"
-    NUM_FEAT = 111
-    EMB_DIM = 32
-    HIDDEN_DIM = 200
-    NUM_CLASS = 15
-    dataset_class = dataset_heter.HeterGraph
-    train_loader, valid_loader = prepare_data_loaders(TRAIN_NAMES, SAVE_FOLDER, dataset_class)
+    from model.schenker_GNN_model import GroupMat
+    from dataset_heter import HeterGraph
+    train_loader, valid_loader = prepare_data_loaders(TRAIN_NAMES, SAVE_FOLDER, HeterGraph)
 
     model, optimizer, scheduler = prepare_model(
         NUM_FEAT,
         EMB_DIM,
         HIDDEN_DIM,
         NUM_CLASS,
-        model_class=Sckgroupmat.GroupMat,
+        model_class=GroupMat,
         device=DEVICE
     )
-
     model.to(DEVICE)
-    # Training and validation loop
-    num_epochs = 50
+
     train_loss_curve = []
     valid_loss_curve = []
     train_acc_curve = []
     valid_acc_curve = []
-    loss_fn = SIM_CRITERION
-    class_weight = [0.7, 0.3]
 
-    for epoch in range(num_epochs):
-        train_loss = train_sck(model, loss_fn, train_loader, class_weight)
-        valid_loss = validate_sck(model, loss_fn, valid_loader, class_weight)
+    for epoch in range(NUM_EPOCHS):
+        train_loss = train_loop(model, train_loader)
+        valid_loss = validation_loop(model, valid_loader)
         print(f'Epoch: {epoch + 1}, Training Loss: {train_loss:.4f}, Validation Loss: {valid_loss:.4f}')
         scheduler.step()
         train_loss_curve.append(train_loss)

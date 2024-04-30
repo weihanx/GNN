@@ -57,5 +57,5 @@ def transpose_Pachelbel():
 
 
 if __name__ == "__main__":
-    # transpose("./WTC_II_D#_min/WTC_II_D#_min.xml", "D#", major=False)
-    transpose_Pachelbel()
+    transpose("./WTC_II_C_maj/WTC_II_C_maj.xml", "C", major=True)
+    # transpose_Pachelbel()
