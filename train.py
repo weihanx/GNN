@@ -80,7 +80,7 @@ def validation_loop(model, valid_loader):
 
 if __name__ == "__main__":
     from model.schenker_GNN_model import GroupMat
-    from dataset_heter import HeterGraph
+    from data_processing import HeterGraph
     train_loader, valid_loader = prepare_data_loaders(TRAIN_NAMES, SAVE_FOLDER, HeterGraph)
 
     model, optimizer, scheduler = prepare_model(

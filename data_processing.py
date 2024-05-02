@@ -47,7 +47,7 @@ class HeterGraph(Dataset):
 
     @property
     def processed_file_names(self):
-        return [f'{i}_processed.pt' for i in range(971)]
+        return [f'{i}_processed.pt' for i in range(1286)]
 
     def one_hot_convert(self, mapped_pitch, num_class):
         # number of samples, number of class
