@@ -17,6 +17,8 @@ from torch.nn import Dropout
 from torch_geometric.nn import global_mean_pool
 from GNN_backbone import HeteroGNN
 from GNN_cluster import GNN_Cluster
+from GNN_cat import CatEmbedder, one_hot_to_indices
+
 """
 Model Definition
 # # """
@@ -33,7 +35,8 @@ class GroupMat(torch.nn.Module):
         super(GroupMat, self).__init__()
         self.device = device
 
-        self.embed = torch.nn.Linear(num_feature, embedding_dim)
+        # self.embed = torch.nn.Linear(num_feature, embedding_dim)
+        self.embed = CatEmbedder(num_feature, embedding_dim-1, 1, 1, 0.5, 0.5)
         # self.gnn1_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden_channel, output_channel
         # self.custom_weight_init(self.gnn1_embed)
         self.gnn2_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden, output
@@ -117,7 +120,11 @@ class GroupMat(torch.nn.Module):
         # print(f"num nodes = {num_nodes}")
 
         x['note'] = x['note'].float()
-        x['note'] = self.embed(x['note'])
+        num_features = x['note'][:, -1]
+        cat_features = x['note'][:, :-1]
+        cat_indices = [one_hot_to_indices(cat_features[i]) for i in range(cat_features.shape[0])]
+        cat_embedding = self.embed(torch.stack(cat_indices))
+        x['note'] = torch.cat((cat_embedding, torch.unsqueeze(num_features, dim=1)), 1)
 
         x,edge_dict_1, S_1 =  self.gnn_cluster1(x, edge_index_dict)
         

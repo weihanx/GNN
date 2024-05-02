@@ -64,12 +64,14 @@ class CatEmbedder(nn.Module):
 
     def forward(self, cat_indices):
 
-        cat_adjs = self.generate_cat_adjs(cat_indices[0].shape)
+        cat_adjs = self.generate_cat_adjs(cat_indices.shape[0], cat_indices.shape[1])
         shallow_embedding = self.embedder(cat_indices)
 
         # Global feature pooling
         global_features = self.global_acc(shallow_embedding, cat_adjs.float())
         global_features = F.relu(global_features)
+        # Pool global features together
+        global_features = torch.mean(global_features, dim=-2)
 
         for i, layer in enumerate(self.global_stack):
             global_features = layer(global_features)
@@ -92,13 +94,16 @@ class CatEmbedder(nn.Module):
 
         return self.alpha * global_features + (1 - self.alpha) * local_features
 
-    def generate_cat_adjs(self, node_count):
-        # Normalization by  P'' = Q^{-1/2}*P'*Q^{-1/2}, P' = P+probe*O.
-        cat_adjs = torch.ones((node_count, self.n_cats, self.n_cats))
-        cat_adjs += self.probe * torch.eye(self.n_cats)
-        row_sum = self.n_cats + self.probe
+    def generate_cat_adjs(self, node_count, num_cats):
+        # Normalization by  P'' = Q^{-1/2}*P'*Q^{-1/2}, P' = P+probe*O
+        # Note that num_cats is the number of "active" or non-zero categories
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        cat_adjs = torch.ones((node_count, num_cats, num_cats))
+        cat_adjs += self.probe * torch.eye(num_cats)
+        row_sum = num_cats + self.probe
         cat_adjs = (1. / row_sum) * cat_adjs
-        return cat_adjs
-    
-    def one_hot_to_indices(self, one_hot):
-        return torch.nonzero(one_hot == 1).squeeze()
+        return cat_adjs.to(device)
+
+def one_hot_to_indices(one_hot):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    return torch.nonzero(one_hot == 1).squeeze().to(device)
