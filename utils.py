@@ -2,22 +2,20 @@ from tqdm import tqdm
 
 from config import *
 from torch_geometric.loader import DataLoader
-import dataset_heter
+import data_processing
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-def prepare_data_loaders(train_names, save_folder, transform=None, dataset_class=dataset_heter.HeterGraph):
+def prepare_data_loaders(train_names, save_folder, dataset_class=data_processing.HeterGraph):
     with open(train_names, "r") as file:
         train_names = file.readlines()
     train_names = [line.strip() for line in train_names]
 
     dataset = dataset_class(
         root=save_folder,
-        train_names=train_names,
-        transform=None,
-        pre_transform=None
+        train_names=train_names
     )
 
     train_size = int(len(dataset) * TRAIN_PERCENT)

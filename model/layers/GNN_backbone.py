@@ -2,7 +2,7 @@ from torch_geometric.nn.norm import LayerNorm
 from torch_geometric.nn import HeteroConv, GCNConv
 from torch_geometric.nn.conv import DirGNNConv
 import torch
-from config import SHARE_BACKBONE_WEIGHTS
+from config import SHARE_BACKBONE_WEIGHTS, INTERVAL_EDGES
 from torch.nn import Dropout
 
 
@@ -16,6 +16,12 @@ class HeteroGNN(torch.nn.Module):
             ('note', 'onset', 'note'),
             ('note', 'sustain', 'note'),
             ('note', 'rest', 'note')
+        ] + [
+            ('note', f'up{interval}', 'note')
+            for interval in INTERVAL_EDGES
+        ] + [
+            ('note', f'down{interval}', 'note')
+            for interval in INTERVAL_EDGES
         ]
         gcn_conv = GCNConv(num_input_features, hidden_channels, normalize)
         self.conv_1 = HeteroConv({

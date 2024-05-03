@@ -11,7 +11,7 @@ from config import *
 
 
 def debug_matrices(grouping_matrix_true, cluster_matrix_pred, grouping_matrix_pred):
-    num_decimals = 2
+    num_decimals = 3
     grouping_matrix_true_round = np.round(grouping_matrix_true.detach().numpy(), decimals=num_decimals)
     grouping_matrix_pred_after = np.round(torch.matmul(cluster_matrix_pred, cluster_matrix_pred.t()).detach().numpy(),
                                           decimals=num_decimals)
@@ -20,7 +20,6 @@ def debug_matrices(grouping_matrix_true, cluster_matrix_pred, grouping_matrix_pr
 
 
 def train_loop(model, train_loader):
-    logging.debug(f"Training...")
     train_loss = []
     for count, databatch in enumerate(train_loader):
 
@@ -80,7 +79,7 @@ def validation_loop(model, valid_loader):
 
 if __name__ == "__main__":
     from model.schenker_GNN_model import GroupMat
-    from dataset_heter import HeterGraph
+    from data_processing import HeterGraph
     train_loader, valid_loader = prepare_data_loaders(TRAIN_NAMES, SAVE_FOLDER, HeterGraph)
 
     model, optimizer, scheduler = prepare_model(
