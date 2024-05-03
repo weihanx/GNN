@@ -36,7 +36,7 @@ class GroupMat(torch.nn.Module):
         self.device = device
 
         # self.embed = torch.nn.Linear(num_feature, embedding_dim)
-        self.embed = CatEmbedder(num_feature, embedding_dim-1, 1, 1, 0.5, 0.5)
+        self.embed = CatEmbedder(num_feature, 1, embedding_dim, 1, 1, 0.5, 0.5)
         # self.gnn1_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden_channel, output_channel
         # self.custom_weight_init(self.gnn1_embed)
         self.gnn2_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden, output
@@ -110,7 +110,7 @@ class GroupMat(torch.nn.Module):
 
         return binary_tensor
 
-    def forward(self, x, edge_index_dict, batch):
+    def forward(self, x, edge_index_dict, batch, mixed=True):
         """
         Schen: should replace s
         """
@@ -123,8 +123,13 @@ class GroupMat(torch.nn.Module):
         num_features = x['note'][:, -1]
         cat_features = x['note'][:, :-1]
         cat_indices = [one_hot_to_indices(cat_features[i]) for i in range(cat_features.shape[0])]
-        cat_embedding = self.embed(torch.stack(cat_indices))
-        x['note'] = torch.cat((cat_embedding, torch.unsqueeze(num_features, dim=1)), 1)
+
+        if mixed:
+            cat_embedding = self.embed(torch.stack(cat_indices), num_features=num_features)
+            x['note'] = cat_embedding
+        else:
+            cat_embedding = self.embed(torch.stack(cat_indices))
+            x['note'] = torch.cat((cat_embedding, torch.unsqueeze(num_features, dim=1)), 1)
 
         x,edge_dict_1, S_1 =  self.gnn_cluster1(x, edge_index_dict)
         

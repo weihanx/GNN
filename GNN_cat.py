@@ -41,17 +41,21 @@ class BatchAcc(nn.Module):
 
 class CatEmbedder(nn.Module):
 
-    def __init__(self, n_cats, d_embed, n_global, n_local, probe, alpha):
+    def __init__(self, n_cats, n_nums, d_embed, n_global, n_local, probe, alpha):
 
         super(CatEmbedder, self).__init__()
 
         self.n_cats = n_cats
+        self.n_nums = n_nums
         self.d_embed = d_embed
         self.n_global = n_global
         self.n_local = n_local
 
         self.embedder = nn.Embedding(n_cats, d_embed)
         self.embedder.weight.requires_grad = True
+
+        # For mixed numerical-categorical feature embedding
+        self.num_embedder = nn.Linear(n_nums, d_embed)
 
         self.global_acc = BatchAcc(d_embed, d_embed)
         self.global_stack = nn.ModuleList([nn.Linear(d_embed, d_embed, bias=True) for _ in range(n_global)])
@@ -62,13 +66,21 @@ class CatEmbedder(nn.Module):
         # Hyperparameter for convex combination of global and local embedding
         self.alpha = alpha
 
-    def forward(self, cat_indices):
+    def forward(self, cat_indices, num_features=None):
 
-        cat_adjs = self.generate_cat_adjs(cat_indices.shape[0], cat_indices.shape[1])
+        n_num = self.n_nums if num_features is not None else 0
+
+        if num_features is not None:
+            num_embedding = self.num_embedder(num_features.unsqueeze(1))
+            # Reshape to [num_notes, 1, d_embed]
+            num_embedding = num_embedding.unsqueeze(1)
+
+        cat_adjs = self.generate_cat_adjs(cat_indices.shape[0], cat_indices.shape[1] + n_num)
         shallow_embedding = self.embedder(cat_indices)
+        embedding = torch.cat((shallow_embedding, num_embedding), 1)
 
         # Global feature pooling
-        global_features = self.global_acc(shallow_embedding, cat_adjs.float())
+        global_features = self.global_acc(embedding, cat_adjs.float())
         global_features = F.relu(global_features)
         # Pool global features together
         global_features = torch.mean(global_features, dim=-2)
@@ -79,7 +91,7 @@ class CatEmbedder(nn.Module):
                 global_features = F.relu(global_features)
 
         # Local feature pooling
-        summed_local_features = torch.sum(shallow_embedding, 1) 
+        summed_local_features = torch.sum(embedding, 1) 
         square_summed_field_features = summed_local_features ** 2 
         # squre-sum-part
         squared_local_features = shallow_embedding ** 2 
