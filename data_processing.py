@@ -100,6 +100,24 @@ class HeterGraph(Dataset):
             cluster_tuple = cluster_tuple + (cur_cluster,)
         return cluster_tuple
 
+    def get_metric_strengths(self, pyscoreparser_notes: list[Note]):
+        time_signature = pyscoreparser_notes[0].state_fixed.time_signature
+        time_signature_str = f"{time_signature.numerator}/{time_signature.denominator}"
+        time_signature_QL = time_signature.numerator / time_signature.denominator * 4
+        curr_total_QL = 0
+        metric_strengths = []
+        #TODO: Handle anacrusis
+        for note in pyscoreparser_notes:
+            measure_placement_QL = curr_total_QL % time_signature_QL
+            metric_map_time_sig = METRIC_STRENGTH_QUARTER_ONSET[time_signature_str]
+            try:
+                metric_strengths.append(metric_map_time_sig[measure_placement_QL] - 1)
+            except KeyError:
+                metric_strengths.append(5)
+            curr_total_QL += SECONDS_TO_QL(note.note_duration.seconds)
+        return metric_strengths
+
+
     def process_file_nodes(self, hetero_data, pyscoreparser_notes):
         offsets = [note.state_fixed.time_position for note in pyscoreparser_notes]
         durations = [note.note_duration.seconds for note in pyscoreparser_notes]
@@ -109,11 +127,13 @@ class HeterGraph(Dataset):
             "pitch_class": [PITCH_CLASS_MAP[note.pitch[0]] for note in pyscoreparser_notes],
             "duration": np.array([duration / np.max(durations) for duration in durations]),
             "offsets": np.array([offset / np.max(offsets) for offset in offsets]),
+            "metric_strength": self.get_metric_strengths(pyscoreparser_notes)
         }
         node_features["midi"] = self.to_float_tensor(node_features["midi"]).unsqueeze(1)
         node_features["pitch_class"] = self.one_hot_convert(node_features["pitch_class"], len(PITCH_CLASS_MAP))
         node_features["duration"] = self.to_float_tensor(node_features["duration"]).unsqueeze(1)
         node_features["offsets"] = self.to_float_tensor(node_features["offsets"]).unsqueeze(1)
+        node_features["metric_strength"] = self.one_hot_convert(node_features["metric_strength"], 6)
 
         note_features = torch.cat([feature for feature in node_features.values()], dim=1)
 

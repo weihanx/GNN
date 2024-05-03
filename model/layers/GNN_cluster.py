@@ -84,8 +84,8 @@ class GNN_Cluster(torch.nn.Module):
         grouping_loss = GROUPING_CRITERION(grouping_matrix, grouping_matrix_true)
         grouping_matrix = grouping_matrix.unsqueeze(0)
 
-        conv_sqrt = torch_utils.MPA_Lya.apply(grouping_matrix)
-        clustering_matrix = conv_sqrt.squeeze().float()
+        clustering_matrix = torch_utils.MPA_Lya.apply(grouping_matrix)
+        clustering_matrix = clustering_matrix.squeeze().float()
         clustering_matrix = F.softmax(clustering_matrix, dim=1)
 
         x['note'] = torch.matmul(clustering_matrix, x['note'])
