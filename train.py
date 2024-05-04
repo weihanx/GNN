@@ -30,19 +30,19 @@ def train_loop(model, train_loader):
         cluster_matrix_true = databatch['cluster'][0][0]
         grouping_matrix_true = torch.matmul(cluster_matrix_true, cluster_matrix_true.t())
 
-        final_embedding, cluster_matrix_pred, grouping_loss, grouping_matrix_pred = model(data, grouping_matrix_true)
+        final_embedding, cluster_matrix_1_pred, grouping_loss_1, grouping_matrix_1_pred = model(data, grouping_matrix_true)
 
-        atrue, aafter, apred = debug_matrices(grouping_matrix_true, cluster_matrix_pred, grouping_matrix_pred)
+        atrue, aafter, apred = debug_matrices(grouping_matrix_true, cluster_matrix_1_pred, grouping_matrix_1_pred)
 
-        train_loss.append(grouping_loss.item())
-        grouping_loss.backward()
+        train_loss.append(grouping_loss_1.item())
+        grouping_loss_1.backward()
 
         if count % PRINT_EVERY == 0 and PRINT_LOSS:
             print(filename)
-            print(grouping_loss.item())
+            print(grouping_loss_1.item())
         if count % PRINT_EVERY == 0 and PRINT_MATRICES:
             print(filename)
-            print(grouping_matrix_pred)
+            print(grouping_matrix_1_pred)
             print(grouping_matrix_true)
 
         optimizer.step()

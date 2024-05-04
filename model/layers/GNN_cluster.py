@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from model.layers.GNN_backbone import HeteroGNN
-from config import DEVICE, GROUPING_CRITERION
+from config import DEVICE, GROUPING_CRITERION, LAMBDA_CLAMP_MIN
 
 
 class GNN_Cluster(torch.nn.Module):
@@ -84,9 +84,15 @@ class GNN_Cluster(torch.nn.Module):
         grouping_loss = GROUPING_CRITERION(grouping_matrix, grouping_matrix_true)
         grouping_matrix = grouping_matrix.unsqueeze(0)
 
-        clustering_matrix = torch_utils.MPA_Lya.apply(grouping_matrix)
+        # Eigen Decomposition
+        # clustering_matrix = torch_utils.MPA_Lya.apply(grouping_matrix)
+        eigen_values, eigen_vectors = torch.linalg.eigh(grouping_matrix)
+        eigen_values = torch.clamp(eigen_values, min=LAMBDA_CLAMP_MIN)
+        sqrt_e_values = torch.sqrt(torch.diag(eigen_values.squeeze()))
+
+        clustering_matrix = torch.matmul(eigen_vectors, sqrt_e_values)
         clustering_matrix = clustering_matrix.squeeze().float()
-        clustering_matrix = F.softmax(clustering_matrix, dim=1)
+        # clustering_matrix = F.softmax(clustering_matrix, dim=1)
 
         x['note'] = torch.matmul(clustering_matrix, x['note'])
 
