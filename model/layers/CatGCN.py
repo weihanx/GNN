@@ -51,11 +51,13 @@ class CatEmbedder(nn.Module):
         self.n_global = n_global
         self.n_local = n_local
 
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
         self.embedder = nn.Embedding(n_cats, d_embed)
         self.embedder.weight.requires_grad = True
 
         # For mixed numerical-categorical feature embedding
-        self.num_embedder = nn.Linear(n_nums, d_embed)
+        self.num_embedder = [nn.Linear(1, d_embed).to(self.device) for _ in range(n_nums)]
 
         self.global_acc = BatchAcc(d_embed, d_embed)
         self.global_stack = nn.ModuleList([nn.Linear(d_embed, d_embed, bias=True) for _ in range(n_global)])
@@ -71,9 +73,11 @@ class CatEmbedder(nn.Module):
         n_num = self.n_nums if num_features is not None else 0
 
         if num_features is not None:
-            num_embedding = self.num_embedder(num_features.unsqueeze(1))
-            # Reshape to [num_notes, 1, d_embed]
-            num_embedding = num_embedding.unsqueeze(1)
+            num_embedding_list = []
+            for i in range(self.n_nums):
+                curr_num_embedding = self.num_embedder[i](num_features[:, i].unsqueeze(1))
+                num_embedding_list.append(curr_num_embedding.unsqueeze(1))
+            num_embedding = torch.cat(num_embedding_list, 1).squeeze(2).to(self.device)
 
         cat_adjs = self.generate_cat_adjs(cat_indices.shape[0], cat_indices.shape[1] + n_num)
         shallow_embedding = self.embedder(cat_indices)

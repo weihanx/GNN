@@ -12,10 +12,10 @@ from config import *
 
 def debug_matrices(grouping_matrix_true, cluster_matrix_pred, grouping_matrix_pred):
     num_decimals = 3
-    grouping_matrix_true_round = np.round(grouping_matrix_true.detach().numpy(), decimals=num_decimals)
-    grouping_matrix_pred_after = np.round(torch.matmul(cluster_matrix_pred, cluster_matrix_pred.t()).detach().numpy(),
+    grouping_matrix_true_round = np.round(grouping_matrix_true.cpu().detach().numpy(), decimals=num_decimals)
+    grouping_matrix_pred_after = np.round(torch.matmul(cluster_matrix_pred, cluster_matrix_pred.t()).cpu().detach().numpy(),
                                           decimals=num_decimals)
-    grouping_matrix_pred_round = np.round(grouping_matrix_pred.detach().numpy(), decimals=num_decimals)
+    grouping_matrix_pred_round = np.round(grouping_matrix_pred.cpu().detach().numpy(), decimals=num_decimals)
     return grouping_matrix_true_round, grouping_matrix_pred_after, grouping_matrix_pred_round
 
 
