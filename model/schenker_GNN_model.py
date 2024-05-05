@@ -3,6 +3,7 @@ import torch
 
 from model.layers.GNN_backbone import HeteroGNN
 from model.layers.GNN_cluster import GNN_Cluster
+from model.layers.CatGCN import CatEmbedder, one_hot_to_indices
 from config import DEVICE
 
 
@@ -11,6 +12,7 @@ class GroupMat(torch.nn.Module):
         super(GroupMat, self).__init__()
         self.device = device
 
+        self.cat_embed = CatEmbedder(num_feature, 1, embedding_dim, 1, 1, 0.5, 0.5)
         self.linear_embed = torch.nn.Linear(num_feature, embedding_dim)
 
         self.gnn_cluster1 = GNN_Cluster(embedding_dim, hidden_dim, num_classes, self.device)
@@ -31,14 +33,27 @@ class GroupMat(torch.nn.Module):
                 adj[edge] = adj_matrix
         return adj
 
-    def forward(self, data, grouping_matrix_true):
+    def forward(self, data, grouping_matrix_true, embedding_method="cat", mixed=True):
+
         x = data.x_dict
         edge_index_dict = data.edge_index_dict
         attribute_dict = {edge_type: data[edge_type].edge_attr for edge_type in data.edge_types}
 
-        x['note'] = x['note'].float()
+        if embedding_method == "cat":
+            x['note'] = x['note'].float()
+            num_features = x['note'][:, -1]
+            cat_features = x['note'][:, :-1]
+            cat_indices = [one_hot_to_indices(cat_features[i]) for i in range(cat_features.shape[0])]
 
-        x['note'] = self.linear_embed(x['note'])
+            if mixed:
+                cat_embedding = self.embed(torch.stack(cat_indices), num_features=num_features)
+                x['note'] = cat_embedding
+            else:
+                cat_embedding = self.embed(torch.stack(cat_indices))
+                x['note'] = torch.cat((cat_embedding, torch.unsqueeze(num_features, dim=1)), 1)
+
+        elif embedding_method == "linear":
+            x['note'] = self.linear_embed(x['note'])
 
         x, edge_dict, attribute_dict, S_1, grouping_loss_1, grouping_matrix_pred_1 = self.gnn_cluster1(x, edge_index_dict, attribute_dict, grouping_matrix_true)
 

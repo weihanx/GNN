@@ -3,3 +3,5 @@ pyScoreParser
 __pycache__
 processed_data
 
+__pycache__/
+schenkerian_clusters/
