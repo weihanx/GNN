@@ -12,17 +12,16 @@ from config import *
 
 def debug_matrices(grouping_matrix_true, cluster_matrix_pred, grouping_matrix_pred):
     num_decimals = 3
-    grouping_matrix_true_round = np.round(grouping_matrix_true.detach().numpy(), decimals=num_decimals)
-    grouping_matrix_pred_after = np.round(torch.matmul(cluster_matrix_pred, cluster_matrix_pred.t()).detach().numpy(),
+    grouping_matrix_true_round = np.round(grouping_matrix_true.cpu().detach().numpy(), decimals=num_decimals)
+    grouping_matrix_pred_after = np.round(torch.matmul(cluster_matrix_pred, cluster_matrix_pred.t()).cpu().detach().numpy(),
                                           decimals=num_decimals)
-    grouping_matrix_pred_round = np.round(grouping_matrix_pred.detach().numpy(), decimals=num_decimals)
+    grouping_matrix_pred_round = np.round(grouping_matrix_pred.cpu().detach().numpy(), decimals=num_decimals)
     return grouping_matrix_true_round, grouping_matrix_pred_after, grouping_matrix_pred_round
 
 
 def train_loop(model, train_loader):
     train_losses = []
     for count, databatch in enumerate(train_loader):
-
         filename = Path(databatch['name'][0])
         data = databatch['data']
         data = data.to(DEVICE)
@@ -48,25 +47,26 @@ def train_loop(model, train_loader):
 
 
 def validation_loop(model, valid_loader):
-    logging.debug(f"Validating...")
     model.eval()
     with torch.no_grad():
-        val_loss = []
+        val_losses = []
         for count, databatch in enumerate(valid_loader):
             filename = Path(databatch['name'][0])
             data = databatch['data']
 
-            cluster_matrix_true = databatch['cluster'][0][0]
-            grouping_matrix_true = torch.matmul(cluster_matrix_true, cluster_matrix_true.t())
+            cluster_matrices_true = [c[0] for c in databatch['cluster']]
+            grouping_matrices_true = [
+                torch.matmul(cluster_matrix_true, cluster_matrix_true.t())
+                for cluster_matrix_true in cluster_matrices_true
+            ]
 
             data = data.to(DEVICE)
-            final_emb, cluster_matrix_pred, grouping_loss, grouping_matrix_pred = model(data, grouping_matrix_true)
+            final_emb, cluster_results = model(data, grouping_matrices_true)
 
-            filename.parent.mkdir(parents=True, exist_ok=True)
+            val_loss = sum(cluster_results['grouping_losses'])
+            val_losses.append(val_loss)
 
-            val_loss.append(grouping_loss.item())
-
-    return np.mean(val_loss)
+    return np.mean(val_losses)
 
 
 if __name__ == "__main__":

@@ -78,6 +78,8 @@ class GNN_Cluster(torch.nn.Module):
         grouping_vector = torch.sigmoid(distance_vector)
 
         grouping_matrix = grouping_vector.reshape((num_nodes, num_nodes))
+        if grouping_matrix.shape != grouping_matrix_true.shape:
+            print("oops")
         grouping_loss = GROUPING_CRITERION(grouping_matrix, grouping_matrix_true)
         grouping_matrix = grouping_matrix.unsqueeze(0)
 

@@ -123,17 +123,17 @@ class HeterGraph(Dataset):
         durations = [note.note_duration.seconds for note in pyscoreparser_notes]
 
         node_features = {
-            "midi": np.array([(note.pitch[1] - 21) / 88 for note in pyscoreparser_notes]),
             "pitch_class": [PITCH_CLASS_MAP[note.pitch[0]] for note in pyscoreparser_notes],
+            "metric_strength": self.get_metric_strengths(pyscoreparser_notes),
+            "midi": np.array([(note.pitch[1] - 21) / 88 for note in pyscoreparser_notes]),
             "duration": np.array([duration / np.max(durations) for duration in durations]),
-            "offsets": np.array([offset / np.max(offsets) for offset in offsets]),
-            "metric_strength": self.get_metric_strengths(pyscoreparser_notes)
+            "offsets": np.array([offset / np.max(offsets) for offset in offsets])
         }
-        node_features["midi"] = self.to_float_tensor(node_features["midi"]).unsqueeze(1)
         node_features["pitch_class"] = self.one_hot_convert(node_features["pitch_class"], len(PITCH_CLASS_MAP))
+        node_features["metric_strength"] = self.one_hot_convert(node_features["metric_strength"], 6)
+        node_features["midi"] = self.to_float_tensor(node_features["midi"]).unsqueeze(1)
         node_features["duration"] = self.to_float_tensor(node_features["duration"]).unsqueeze(1)
         node_features["offsets"] = self.to_float_tensor(node_features["offsets"]).unsqueeze(1)
-        node_features["metric_strength"] = self.one_hot_convert(node_features["metric_strength"], 6)
 
         note_features = torch.cat([feature for feature in node_features.values()], dim=1)
 
