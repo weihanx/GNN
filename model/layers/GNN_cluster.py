@@ -8,7 +8,7 @@ from config import DEVICE, GROUPING_CRITERION, LAMBDA_CLAMP_MIN
 
 
 class GNN_Cluster(torch.nn.Module):
-    def __init__(self, embedding_dim, hidden_dim, num_classes, device=DEVICE):
+    def __init__(self, embedding_dim, hidden_dim, device=DEVICE):
         super(GNN_Cluster, self).__init__()
         self.device = device
 
@@ -17,9 +17,6 @@ class GNN_Cluster(torch.nn.Module):
 
         self.custom_weight_init(self.gnn_embed)
         torch.nn.init.xavier_uniform_(self.linear.weight)  # avoid all zero or all
-
-        self.classifier = Linear(hidden_dim, num_classes)
-        self.dropout = torch.nn.Dropout(p=0.5)
 
     def custom_weight_init(self, model):
         for m in model.modules():

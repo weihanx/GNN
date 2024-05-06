@@ -20,35 +20,31 @@ def debug_matrices(grouping_matrix_true, cluster_matrix_pred, grouping_matrix_pr
 
 
 def train_loop(model, train_loader):
-    train_loss = []
+    train_losses = []
     for count, databatch in enumerate(train_loader):
 
         filename = Path(databatch['name'][0])
         data = databatch['data']
         data = data.to(DEVICE)
 
-        cluster_matrix_true = databatch['cluster'][0][0]
-        grouping_matrix_true = torch.matmul(cluster_matrix_true, cluster_matrix_true.t())
+        cluster_matrices_true = [c[0] for c in databatch['cluster']]
+        grouping_matrices_true = [
+            torch.matmul(cluster_matrix_true, cluster_matrix_true.t())
+            for cluster_matrix_true in cluster_matrices_true
+        ]
 
-        final_embedding, cluster_matrix_1_pred, grouping_loss_1, grouping_matrix_1_pred = model(data, grouping_matrix_true)
+        final_embedding, cluster_results = model(data, grouping_matrices_true)
 
-        atrue, aafter, apred = debug_matrices(grouping_matrix_true, cluster_matrix_1_pred, grouping_matrix_1_pred)
+        # atrue, aafter, apred = debug_matrices(grouping_matrix_true, cluster_matrix_1_pred, grouping_matrix_1_pred)
 
-        train_loss.append(grouping_loss_1.item())
-        grouping_loss_1.backward()
-
-        if count % PRINT_EVERY == 0 and PRINT_LOSS:
-            print(filename)
-            print(grouping_loss_1.item())
-        if count % PRINT_EVERY == 0 and PRINT_MATRICES:
-            print(filename)
-            print(grouping_matrix_1_pred)
-            print(grouping_matrix_true)
+        train_loss = sum(cluster_results['grouping_losses'])
+        train_losses.append(train_loss.item())
+        train_loss.backward()
 
         optimizer.step()
         optimizer.zero_grad()
 
-    return np.mean(train_loss)
+    return np.mean(train_losses)
 
 
 def validation_loop(model, valid_loader):
@@ -69,10 +65,6 @@ def validation_loop(model, valid_loader):
             filename.parent.mkdir(parents=True, exist_ok=True)
 
             val_loss.append(grouping_loss.item())
-            if count % PRINT_EVERY == 0 and PRINT_MATRICES:
-                print(filename)
-                print(grouping_matrix_pred)
-                print(grouping_matrix_true)
 
     return np.mean(val_loss)
 
@@ -86,7 +78,7 @@ if __name__ == "__main__":
         NUM_FEAT,
         EMB_DIM,
         HIDDEN_DIM,
-        NUM_CLASS,
+        NUM_CLUSTERING_LAYERS,
         model_class=GroupMat,
         device=DEVICE
     )

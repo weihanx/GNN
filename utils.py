@@ -25,8 +25,8 @@ def prepare_data_loaders(train_names, save_folder, dataset_class=data_processing
     return train_loader, valid_loader
 
 
-def prepare_model(num_features, embedding_dim, hidden_dim, num_class, model_class, device):
-    model = model_class(num_features, embedding_dim, hidden_dim, num_class, device)
+def prepare_model(num_features, embedding_dim, hidden_dim, num_clustering_layers, model_class, device):
+    model = model_class(num_features, embedding_dim, hidden_dim, num_clustering_layers, device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)  # adamW
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=SCHEDULER_GAMMA)
     return model, optimizer, scheduler
