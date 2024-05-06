@@ -4,7 +4,7 @@ import torch
 from model.layers.GNN_backbone import HeteroGNN
 from model.layers.GNN_cluster import GNN_Cluster
 from model.layers.CatGCN import CatEmbedder, one_hot_to_indices
-from config import DEVICE
+from config import DEVICE, EMBEDDING_METHOD
 
 
 class GroupMat(torch.nn.Module):
@@ -33,7 +33,7 @@ class GroupMat(torch.nn.Module):
                 adj[edge] = adj_matrix
         return adj
 
-    def forward(self, data, grouping_matrix_true, embedding_method="cat", mixed=True):
+    def forward(self, data, grouping_matrix_true, embedding_method=EMBEDDING_METHOD, mixed=True):
 
         x = data.x_dict
         edge_index_dict = data.edge_index_dict
