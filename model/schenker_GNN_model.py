@@ -19,9 +19,10 @@ class GroupMat(torch.nn.Module):
         self.linear_embed = torch.nn.Linear(num_feature, embedding_dim)
 
         self.cluster_layers = torch.nn.ModuleList()
-        for _ in range(num_clustering_layers):
+        for i in range(num_clustering_layers):
             self.cluster_layers.append(
-                GNN_Cluster(embedding_dim, hidden_dim, self.device)
+                GNN_Cluster(embedding_dim, hidden_dim, self.device) if i == 0
+                else GNN_Cluster(hidden_dim, hidden_dim, self.device)
             )
 
     def forward(self, data, grouping_matrices_true, embedding_method=EMBEDDING_METHOD, mixed=True):
@@ -53,8 +54,8 @@ class GroupMat(torch.nn.Module):
             'grouping_matrix_preds': []
         }
         for i, cluster_layer in enumerate(self.cluster_layers):
-            x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix_pred = cluster_layer(
-                x, edge_index_dict, attribute_dict, grouping_matrices_true[i]
+            x, edge_index_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix_pred = cluster_layer(
+                x, edge_index_dict, attribute_dict, grouping_matrices_true[i], cluster_results
             )
             cluster_results['clustering_matrices'].append(clustering_matrix)
             cluster_results['grouping_losses'].append(grouping_loss)

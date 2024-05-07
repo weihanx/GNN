@@ -7,7 +7,7 @@ import torch
 from utils import prepare_data_loaders, prepare_model
 from config import *
 
-# torch.manual_seed(42)
+torch.manual_seed(45)
 
 
 def debug_matrices(grouping_matrix_true, cluster_matrix_pred, grouping_matrix_pred):
@@ -27,9 +27,13 @@ def train_loop(model, train_loader):
         data = data.to(DEVICE)
 
         cluster_matrices_true = [c[0] for c in databatch['cluster']]
+        grouping_matrices_true = [cluster_matrices_true[0]]
+        for i, cluster_matrix_true in enumerate(cluster_matrices_true):
+            if i == 0: continue
+            grouping_matrices_true.append(torch.matmul(grouping_matrices_true[i-1], cluster_matrices_true[i]))
         grouping_matrices_true = [
             torch.matmul(cluster_matrix_true, cluster_matrix_true.t())
-            for cluster_matrix_true in cluster_matrices_true
+            for cluster_matrix_true in grouping_matrices_true
         ]
 
         final_embedding, cluster_results = model(data, grouping_matrices_true)
