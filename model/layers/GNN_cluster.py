@@ -102,3 +102,11 @@ class GNN_Cluster(torch.nn.Module):
             adjacency_matrices[edge_type] = result
         edge_dict, attribute_dict = self.adj_to_coord(adjacency_matrices)
         return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
+
+class SpectralClusterer(torch.nn.Module):
+    
+    def __init__(self, embedding_dim, hidden_dim, num_classes, device=DEVICE):
+        pass
+
+    def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true):
+        pass
