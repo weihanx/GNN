@@ -96,7 +96,7 @@ def matrix_to_json(piece):
 
 
 if __name__ == "__main__":
-    piece = 'Primi_1'
+    piece = 'Primi_3'
     matrix_to_json(piece)
 
 
