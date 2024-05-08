@@ -137,7 +137,7 @@ class SpectralClusterer(Clusterer):
         grouping_matrix = grouping_matrix.unsqueeze(0)
 
         # We treat the grouping matrix as a adjacency/affinity matrix between nodes
-        # and then compute an adjancecy matrix based on it
+        # and then compute a weighted adjancecy matrix W based on it
 
         if similarity_graph == "base":
             # Treat grouping matrix as weighted adjacency matrix
@@ -154,11 +154,11 @@ class SpectralClusterer(Clusterer):
             # Connect nodes iff they are each in the other's K nearest neighbors
             W1 = torch.zeros_like(grouping_matrix)
             # Sort the adjacency matrix by rows and record the indices
-            _, Adj_sort = torch.sort(grouping_matrix, dim=1)
+            _, adj_sort = torch.sort(grouping_matrix, dim=1)
             # Set the weight W1[i, j] to 0.5 when either i or j is within the k-nearest neighbors of each other (Flag)
             # Set the weight W1[i, j] to 1 when both i and j are within the k-nearest neighbors of each other
             for i in range(grouping_matrix.shape[0]):
-                for j in Adj_sort[i, :(K + 1)]:
+                for j in adj_sort[i, :(K + 1)]:
                     if i == j:
                         W1[i, i] = 1
                     elif W1[i, j] == 0 and W1[j, i] == 0:
@@ -169,6 +169,12 @@ class SpectralClusterer(Clusterer):
         elif similarity_graph == "eps_filtration":
             # Form an edge between any two nodes with an grouping value greater than epsilon
             W = (grouping_matrix <= epsilon).float()
+
+        # Compute the degree matrix D
+        degree = torch.sum(W, dim=1)
+        D = torch.diag(degree)
+        # Graph laplacian
+        L = D - W
 
         # Eigen Decomposition
         eigen_values, eigen_vectors = torch.linalg.eigh(grouping_matrix)
