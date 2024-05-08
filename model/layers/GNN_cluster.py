@@ -126,6 +126,17 @@ class SpectralClusterer(Clusterer):
 
     def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true,
                 similarity_graph="base", K=3, epsilon=0.5):
+        
+        grouping_matrix, grouping_loss = self.get_grouping_matrix(x, edge_index_dict, attribute_dict, grouping_matrix_true)
+        
+        fiedler_value, fiedler_vector = self.compute_fiedler(grouping_matrix, similarity_graph, K, epsilon)
+        while fiedler_value <= self.fieldler_threshold:
+            x, edge_dict, attribute_dict, clustering_matrix = self.fiedler_to_clusters(x, edge_index_dict, attribute_dict, fiedler_vector)
+            break
+
+        return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
+
+    def get_grouping_matrix(self, x, edge_index_dict, attribute_dict, grouping_matrix_true):
         num_nodes = x['note'].shape[0]
 
         x['note'] = self.gnn_embed(x, edge_index_dict, attribute_dict).float()
@@ -137,17 +148,11 @@ class SpectralClusterer(Clusterer):
         grouping_matrix = grouping_vector.reshape((num_nodes, num_nodes))
         grouping_loss = GROUPING_CRITERION(grouping_matrix, grouping_matrix_true)
         grouping_matrix = grouping_matrix.unsqueeze(0)
+        return grouping_matrix, grouping_loss
 
-        fielder_value, fielder_vector = self.compute_fielder(grouping_matrix, similarity_graph, K, epsilon)
-        while fielder_value <= self.fieldler_threshold:
-            pass
-
-        # return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
-
-    def compute_fielder(self, grouping_matrix, similarity_graph, K, epsilon):
+    def compute_fiedler(self, grouping_matrix, similarity_graph, K, epsilon):
         # We treat the grouping matrix as a adjacency/affinity matrix between nodes
         # and then compute a weighted adjancecy matrix W based on it
-
         if similarity_graph == "base":
             # Treat grouping matrix as weighted adjacency matrix
             W = grouping_matrix
@@ -188,13 +193,29 @@ class SpectralClusterer(Clusterer):
         # Eigen Decomposition
         eigen_values, eigen_vectors = torch.linalg.eigh(L)
         # Sort the eigenvalues in ascending order and get the corresponding indices
-        sorted_indices = torch.argsort(torch.abs(eigen_values))
+        sorted_indices = torch.argsort(eigen_values).squeeze()
 
         # Get the fielder value/vector, the second smallest eigenvalue/vector
-        fielder_value = eigen_values[sorted_indices[1]]
-        fielder_vector = eigen_vectors[sorted_indices[1]]
-        return fielder_value, fielder_vector
+        fiedler_value = eigen_values[:, sorted_indices[1]]
+        fiedler_vector = eigen_vectors[:, sorted_indices[1], :]
+        return fiedler_value, fiedler_vector
 
-    def fielder_to_clusters(self, x, fiedler_vector):
-        clustering_matrix = None
-        pass
+    def fiedler_to_clusters(self, x, edge_index_dict, attribute_dict, fiedler_vector):
+
+        num_nodes = x['note'].shape[0]
+        positive_indices = (fiedler_vector > 0).nonzero()[:, 1]
+        negative_indices = (fiedler_vector < 0).nonzero()[:, 1]
+        
+        clustering_matrix = torch.zeros((num_nodes, 2)).to(self.device)
+        clustering_matrix[negative_indices, 0] = 1
+        clustering_matrix[positive_indices, 1] = 1
+
+        clustering_matrix = clustering_matrix.squeeze().float()
+        x['note'] = torch.matmul(clustering_matrix.t(), x['note'])
+
+        adjacency_matrices = self.coord_to_adj(edge_index_dict, attribute_dict, num_nodes)
+        for edge_type, A in adjacency_matrices.items():
+            result = torch.matmul(torch.matmul(clustering_matrix.t(), A), clustering_matrix).float()
+            adjacency_matrices[edge_type] = result
+        edge_dict, attribute_dict = self.adj_to_coord(adjacency_matrices)
+        return x, edge_dict, attribute_dict, clustering_matrix
