@@ -6,20 +6,10 @@ import torch.nn.functional as F
 from model.layers.GNN_backbone import HeteroGNN
 from config import DEVICE, GROUPING_CRITERION, LAMBDA_CLAMP_MIN
 
+class Clusterer(torch.nn.Module):
 
-class GNN_Cluster(torch.nn.Module):
-    def __init__(self, embedding_dim, hidden_dim, num_classes, device=DEVICE):
-        super(GNN_Cluster, self).__init__()
-        self.device = device
-
-        self.linear = torch.nn.Linear(hidden_dim, 1).to(device)
-        self.gnn_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden_channel, output_channel
-
-        self.custom_weight_init(self.gnn_embed)
-        torch.nn.init.xavier_uniform_(self.linear.weight)  # avoid all zero or all
-
-        self.classifier = Linear(hidden_dim, num_classes)
-        self.dropout = torch.nn.Dropout(p=0.5)
+    def __init__(self):
+        super(Clusterer, self).__init__()
 
     def custom_weight_init(self, model):
         for m in model.modules():
@@ -71,6 +61,21 @@ class GNN_Cluster(torch.nn.Module):
                 adj[edge] = adj_matrix
         return adj
 
+
+class GNN_Cluster(Clusterer):
+    def __init__(self, embedding_dim, hidden_dim, num_classes, device=DEVICE):
+        super(GNN_Cluster, self).__init__()
+        self.device = device
+
+        self.linear = torch.nn.Linear(hidden_dim, 1).to(device)
+        self.gnn_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden_channel, output_channel
+
+        self.custom_weight_init(self.gnn_embed)
+        torch.nn.init.xavier_uniform_(self.linear.weight)  # avoid all zero or all
+
+        self.classifier = Linear(hidden_dim, num_classes)
+        self.dropout = torch.nn.Dropout(p=0.5)
+
     def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true):
         num_nodes = x['note'].shape[0]
 
@@ -103,10 +108,11 @@ class GNN_Cluster(torch.nn.Module):
         edge_dict, attribute_dict = self.adj_to_coord(adjacency_matrices)
         return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
 
-class SpectralClusterer(torch.nn.Module):
+class SpectralClusterer(Clusterer):
     
-    def __init__(self, embedding_dim, hidden_dim, num_classes, device=DEVICE):
-        pass
+    def __init__(self, embedding_dim, hidden_dim, num_classes, fielder_threshold=0.1, device=DEVICE):
+        super(SpectralClusterer, self).__init__()
+        self.device = device
 
     def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true):
         pass
