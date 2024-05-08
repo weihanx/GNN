@@ -61,7 +61,6 @@ class Clusterer(torch.nn.Module):
                 adj[edge] = adj_matrix
         return adj
 
-
 class GNN_Cluster(Clusterer):
     def __init__(self, embedding_dim, hidden_dim, num_classes, device=DEVICE):
         super(GNN_Cluster, self).__init__()
@@ -114,5 +113,64 @@ class SpectralClusterer(Clusterer):
         super(SpectralClusterer, self).__init__()
         self.device = device
 
-    def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true):
-        pass
+        self.linear = torch.nn.Linear(hidden_dim, 1).to(device)
+        self.gnn_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden_channel, output_channel
+
+        self.custom_weight_init(self.gnn_embed)
+        torch.nn.init.xavier_uniform_(self.linear.weight)  # avoid all zero or all
+
+        self.classifier = Linear(hidden_dim, num_classes)
+        self.dropout = torch.nn.Dropout(p=0.5)
+
+    def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true,
+                similarity_graph="base", K=3,epsilon=0.5):
+        num_nodes = x['note'].shape[0]
+
+        x['note'] = self.gnn_embed(x, edge_index_dict, attribute_dict).float()
+
+        distance_matrix = self.euclidean_distance_matrix(x['note'])
+        distance_vector = self.linear(distance_matrix).to(self.device).float()
+        grouping_vector = torch.sigmoid(distance_vector)
+
+        grouping_matrix = grouping_vector.reshape((num_nodes, num_nodes))
+        grouping_loss = GROUPING_CRITERION(grouping_matrix, grouping_matrix_true)
+        grouping_matrix = grouping_matrix.unsqueeze(0)
+
+        # We treat the grouping matrix as a adjacency/affinity matrix between nodes
+        # and then compute an adjancecy matrix based on it
+
+        if similarity_graph == "base":
+            # Treat grouping matrix as weighted adjacency matrix
+            W = grouping_matrix
+        elif similarity_graph == "knn":
+            # Connect nodes to their K nearest neighbors
+            W = torch.zeros_like(grouping_matrix)
+            # Sort the adjacency matrix by rows and record the indices
+            _, adj_sort = torch.sort(grouping_matrix, dim=1)
+            # Set the weight (i, j) to 1 when either i or j is within the k-nearest neighbors of each other
+            for i in range(adj_sort.shape[0]):
+                W[i, adj_sort[i, :(K + 1)]] = 1
+        elif similarity_graph == "mutual_knn":
+            # Connect nodes iff they are each in the other's K nearest neighbors
+            W1 = torch.zeros_like(grouping_matrix)
+            # Sort the adjacency matrix by rows and record the indices
+            _, Adj_sort = torch.sort(grouping_matrix, dim=1)
+            # Set the weight W1[i, j] to 0.5 when either i or j is within the k-nearest neighbors of each other (Flag)
+            # Set the weight W1[i, j] to 1 when both i and j are within the k-nearest neighbors of each other
+            for i in range(grouping_matrix.shape[0]):
+                for j in Adj_sort[i, :(K + 1)]:
+                    if i == j:
+                        W1[i, i] = 1
+                    elif W1[i, j] == 0 and W1[j, i] == 0:
+                        W1[i, j] = 0.5
+                    else:
+                        W1[i, j] = W1[j, i] = 1
+            W = (W1 > 0.5).float()
+        elif similarity_graph == "eps_filtration":
+            # Form an edge between any two nodes with an grouping value greater than epsilon
+            W = (grouping_matrix <= epsilon).float()
+
+        # Eigen Decomposition
+        eigen_values, eigen_vectors = torch.linalg.eigh(grouping_matrix)
+        eigen_values = torch.clamp(eigen_values, min=LAMBDA_CLAMP_MIN)
+        sqrt_e_values = torch.sqrt(torch.diag(eigen_values.squeeze()))
