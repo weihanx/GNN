@@ -194,31 +194,7 @@ class SpectralClusterer(Clusterer):
         fielder_value = eigen_values[sorted_indices[1]]
         fielder_vector = eigen_vectors[sorted_indices[1]]
         return fielder_value, fielder_vector
-    
-class MinCutClusterer(Clusterer):
 
-    def __init__(self, embedding_dim, hidden_dim, num_classes, device=DEVICE):
-        super(GNN_Cluster, self).__init__()
-        self.device = device
-
-        self.linear = torch.nn.Linear(hidden_dim, 1).to(device)
-        self.gnn_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden_channel, output_channel
-
-        self.custom_weight_init(self.gnn_embed)
-        torch.nn.init.xavier_uniform_(self.linear.weight)  # avoid all zero or all
-
-        self.classifier = Linear(hidden_dim, num_classes)
-        self.dropout = torch.nn.Dropout(p=0.5)
-
-    def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true):
-        num_nodes = x['note'].shape[0]
-
-        x['note'] = self.gnn_embed(x, edge_index_dict, attribute_dict).float()
-
-        distance_matrix = self.euclidean_distance_matrix(x['note'])
-        distance_vector = self.linear(distance_matrix).to(self.device).float()
-        grouping_vector = torch.sigmoid(distance_vector)
-
-        grouping_matrix = grouping_vector.reshape((num_nodes, num_nodes))
-        grouping_loss = GROUPING_CRITERION(grouping_matrix, grouping_matrix_true)
-        grouping_matrix = grouping_matrix.unsqueeze(0)
+    def fielder_to_clusters(self, x, fiedler_vector):
+        clustering_matrix = None
+        pass
