@@ -107,11 +107,13 @@ class GNN_Cluster(Clusterer):
         edge_dict, attribute_dict = self.adj_to_coord(adjacency_matrices)
         return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
 
+# Graph partitioning based on the Fiedler method
 class SpectralClusterer(Clusterer):
-    
+
     def __init__(self, embedding_dim, hidden_dim, num_classes, fielder_threshold=0.1, device=DEVICE):
         super(SpectralClusterer, self).__init__()
         self.device = device
+        self.fieldler_threshold = fielder_threshold
 
         self.linear = torch.nn.Linear(hidden_dim, 1).to(device)
         self.gnn_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden_channel, output_channel
@@ -123,7 +125,7 @@ class SpectralClusterer(Clusterer):
         self.dropout = torch.nn.Dropout(p=0.5)
 
     def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true,
-                similarity_graph="base", K=3,epsilon=0.5):
+                similarity_graph="base", K=3, epsilon=0.5):
         num_nodes = x['note'].shape[0]
 
         x['note'] = self.gnn_embed(x, edge_index_dict, attribute_dict).float()
@@ -136,6 +138,9 @@ class SpectralClusterer(Clusterer):
         grouping_loss = GROUPING_CRITERION(grouping_matrix, grouping_matrix_true)
         grouping_matrix = grouping_matrix.unsqueeze(0)
 
+        fielder_value, fielder_vector = self.compute_fielder(grouping_matrix, similarity_graph, K, epsilon)
+
+    def compute_fielder(self, grouping_matrix, similarity_graph, K, epsilon):
         # We treat the grouping matrix as a adjacency/affinity matrix between nodes
         # and then compute a weighted adjancecy matrix W based on it
 
@@ -173,10 +178,15 @@ class SpectralClusterer(Clusterer):
         # Compute the degree matrix D
         degree = torch.sum(W, dim=1)
         D = torch.diag(degree)
-        # Graph laplacian
+        # Graph laplacian, note that this is guaranteed to be psd
         L = D - W
 
         # Eigen Decomposition
-        eigen_values, eigen_vectors = torch.linalg.eigh(grouping_matrix)
-        eigen_values = torch.clamp(eigen_values, min=LAMBDA_CLAMP_MIN)
-        sqrt_e_values = torch.sqrt(torch.diag(eigen_values.squeeze()))
+        eigen_values, eigen_vectors = torch.linalg.eigh(L)
+        # Sort the eigenvalues in ascending order and get the corresponding indices
+        sorted_indices = torch.argsort(torch.abs(eigen_values))
+
+        # Get the fielder value/vector, the second smallest eigenvalue/vector
+        fielder_value = eigen_values[sorted_indices[1]]
+        fielder_vector = eigen_vectors[sorted_indices[1]]
+        return fielder_value, fielder_vector
