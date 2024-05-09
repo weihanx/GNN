@@ -114,22 +114,27 @@ class GNN_Cluster(torch.nn.Module):
         #         edge_index_dict[edge_type]= torch.empty((2, 0), dtype=torch.long).to(self.device)
         #         edge_index_dict[edge_type].edge_attr = torch.empty((2, 0), dtype=torch.long).to(self.device)
         dist_vec = self.euclidean_distance_matrix(z_0) # (51*25, 200)
+
         # print(f"before linear = {M}")
         dist_vec = self.linear(dist_vec).to(self.device).float()
 
         dist_vec = torch.sigmoid(dist_vec) # shape is (51*25, 1)
         dist_vec = dist_vec.squeeze()
+    
         # print(f"shape of M_G = {M_G.shape}")
         # resize to upper triangular matrix
         tri_M_G = torch.zeros((num_nodes, num_nodes),device = dist_vec.device)
         row_indices, col_indices = torch.triu_indices(num_nodes, num_nodes, offset=0)
         # flip 
         tri_M_G[row_indices, col_indices] = dist_vec
+        # print(f"before add = {tri_M_G}")
         tri_M_G_T = tri_M_G.t()
-        tri_M_G_T = tri_M_G + tri_M_G_T
+        tri_M_G = tri_M_G + tri_M_G_T
+        # print(f"grouping matrix = {tri_M_G}")
+        tri_M_G = torch.clamp(tri_M_G, min=0, max=1)
         tri_M_G.requires_grad_(True)
         # ---- use package -- # 
-        tri_M_G = tri_M_G.unsqueeze(0)  # only need for build-in function
+        tri_M_G = tri_M_G.unsqueeze(0)  # only need for build-in function: grouping matrix
         # print(f" S1: M_G = {new_M_G}")
         conv_sqrt = torch_utils.MPA_Lya.apply(tri_M_G)
         S_1 = conv_sqrt.squeeze().float()  
@@ -141,7 +146,7 @@ class GNN_Cluster(torch.nn.Module):
         num_nodes = x['note'].shape[0]
         for edge_type, A in adj.items():
             result = torch.matmul(torch.matmul(S_1, A),S_1).float()
-            adj_1[edge_type] = self.conditional_softmax(result)# the weight should sum up to 1
-
+            # adj_1[edge_type] = self.conditional_softmax(result)# the weight should sum up to 1
+            adj_1[edge_type] = result
         edge_dict_1, attribute_dict = self.adj_to_coord(adj_1)
-        return x, edge_dict_1, attribute_dict, S_1
+        return x, edge_dict_1, attribute_dict, tri_M_G, S_1
