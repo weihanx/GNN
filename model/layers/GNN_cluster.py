@@ -127,11 +127,45 @@ class FiedlerClusterer(Clusterer):
     def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true,
                 similarity_graph="base", K=3, epsilon=0.5):
         
+        num_nodes = x['note'].shape[0]
+
         grouping_matrix, grouping_loss = self.get_grouping_matrix(x, edge_index_dict, attribute_dict, grouping_matrix_true)
         fiedler_value, fiedler_vector = self.compute_fiedler(grouping_matrix, similarity_graph, K, epsilon)
         
-        if fiedler_value <= self.fieldler_threshold:
+        # Perform a BFS on the computed clusters
+        total_clusters = 0
+        cluster_queue = [(grouping_matrix, x, edge_index_dict, attribute_dict, fiedler_value, fiedler_vector)]
+        while cluster_queue:
+
+            # Get the next 'depth' of clusters to explore
+            grouping_matrix, x, edge_index_dict, attribute_dict, fiedler_value, fiedler_vector = cluster_queue.pop(0)
+
+            # Skip exploring this cluster if the Fiedler value is below a fixed threshold
+            if fiedler_value <= self.fieldler_threshold:
+                continue
+
+            # Compute clusters based on Fiedler partition
             x, edge_dict, attribute_dict, clustering_matrix = self.fiedler_to_clusters(x, edge_index_dict, attribute_dict, fiedler_vector)
+            num_clusters = clustering_matrix.shape[0]
+            
+            total_clusters += num_clusters
+            if num_clusters == 1:
+                continue
+
+            # Compute the 2 subgraphs generated from the Fiedler partition
+            subgraph_group1 = grouping_matrix[clustering_matrix[:, 0]][:, clustering_matrix[:, 0]]
+            subgraph_group2 = grouping_matrix[clustering_matrix[:, 1]][:, clustering_matrix[:, 1]]
+            # Compute associated fiedler values and vectors
+            fiedler_value1, fiedler_vector1 = self.compute_fiedler(subgraph_group1, similarity_graph, K, epsilon)
+            fiedler_value2, fiedler_vector2 = self.compute_fiedler(subgraph_group2, similarity_graph, K, epsilon)
+
+            # Push each subgraph onto the queue
+            cluster_queue.append((subgraph_group1, x, edge_index_dict, attribute_dict, fiedler_value1, fiedler_vector1))
+            cluster_queue.append((subgraph_group2, x, edge_index_dict, attribute_dict, fiedler_value2, fiedler_vector2))
+
+        final_grouping = torch.zeros((num_nodes, num_clusters))
+        
+        grouping_loss = GROUPING_CRITERION(final_grouping, grouping_matrix_true)
 
         return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
 
@@ -199,6 +233,7 @@ class FiedlerClusterer(Clusterer):
         fiedler_vector = eigen_vectors[:, sorted_indices[1], :]
         return fiedler_value, fiedler_vector
 
+    # TODO: Explore using a softmax to get soft assignment instead of hard clustering
     def fiedler_to_clusters(self, x, edge_index_dict, attribute_dict, fiedler_vector):
 
         num_nodes = x['note'].shape[0]
@@ -218,14 +253,3 @@ class FiedlerClusterer(Clusterer):
             adjacency_matrices[edge_type] = result
         edge_dict, attribute_dict = self.adj_to_coord(adjacency_matrices)
         return x, edge_dict, attribute_dict, clustering_matrix
-    
-class FiedlerClusterStack(Clusterer):
-
-    def __init__(self, num_layers, embedding_dim, hidden_dim, num_classes, fielder_thresholds, device=DEVICE):
-        super(FiedlerClusterer, self).__init__()
-        self.device = device
-        self.fielder_stack = torch.nn.ModuleList(
-            [FiedlerClusterer(embedding_dim, hidden_dim, num_classes, fielder_thresholds[i]) for i in range(num_layers)])
-        
-    def forward(self, x, edge_index_dict, attribute_dict, fiedler_vector):
-        pass
