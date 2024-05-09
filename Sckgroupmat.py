@@ -51,6 +51,9 @@ class GroupMat(torch.nn.Module):
         self.gnn1_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden_channel, output_channel
         # self.custom_weight_init(self.gnn1_embed)
         self.gnn2_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden, output
+        
+        
+
         # self.custom_weight_init(self.gnn2_embed)
 
         # self.linear = torch.nn.Linear(hidden_dim, 1).to(device) 
@@ -58,11 +61,14 @@ class GroupMat(torch.nn.Module):
         # print(f"default_kwargs = {default_kwargs}")
         # should pass in non encoded ones
         self.embed = torch.nn.Linear(num_features, embedding_dim)
-
+        self.isfreeze = True
         # self.gnn1_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)  # hidden_channel, output_channel
         # torch.nn.init.xavier_uniform_(self.linear.weight) # avoid all zero or all
         self.gnn_cluster1 = GNN_Cluster(embedding_dim, hidden_dim, num_classes)
         self.gnn_cluster2 = GNN_Cluster(embedding_dim, hidden_dim, num_classes)
+        # self.gnn_cluster2.requires_grad_(False) # initially: freeze the second layer
+        for param in self.gnn_cluster2.parameters():
+            param.requires_grad_ = False    
         self.classifier = Linear(hidden_dim, num_classes)
         self.dropout = torch.nn.Dropout(p=0.5)
 
@@ -156,19 +162,24 @@ class GroupMat(torch.nn.Module):
         # print(f"shape of x_cat = {x_cat.shape}, shape of x_cont = {x_cont.shape}")
         # x['note'] = torch.cat((x_cat, x_cont), dim=1) 
         x['note'] = self.embed( x['note'])
-        x, edge_dict_1, attribute_dict, S_1 =  self.gnn_cluster1(x, edge_index_dict, attribute_dict)
-        
+        x, edge_dict_1, attribute_dict, tri_M_G, S_1 =  self.gnn_cluster1(x, edge_index_dict, attribute_dict)
+        x['note'] = self.dropout(x['note'])
+        edge_dict = edge_dict_1
         #--------------Layer 2------------------
-
-        # x, edge_dict_2, attribute_dict, S_2 = self.gnn_cluster2(x, edge_dict_1, attribute_dict)
-
-        z_2 = self.gnn2_embed(x, edge_dict_1, attribute_dict).float()
+        # print(f"re = {self.gnn_cluster2.requires_grad_}")
+        # if self.gnn_cluster2.requires_grad_:
+        if self.isfreeze == False:
+            x, edge_dict_2, attribute_dict, tri_M_G, S_2 = self.gnn_cluster2(x, edge_dict_1, attribute_dict)
+            edge_dict = edge_dict_2
+            z_2 = self.gnn2_embed(x, edge_dict, attribute_dict).float()
+            return z_2, S_1, S_2, tri_M_G
+        z_2 = self.gnn2_embed(x, edge_dict, attribute_dict).float()
         # print(f"z2  = {z_2.shape}")
         # x_2 = global_mean_pool(z_2, batch)
 
         # x = self.classifier(x_2)
         # x = F.log_softmax(x, dim=-1)
         # print(f"shape of s1 = {S_1.shape}, shape of s2 = {S_2.shape}")
-        return z_2, S_1
+        return z_2, S_1, None, tri_M_G
 
 
