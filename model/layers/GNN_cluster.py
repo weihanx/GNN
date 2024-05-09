@@ -108,10 +108,10 @@ class GNN_Cluster(Clusterer):
         return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
 
 # Graph partitioning based on the Fiedler method
-class SpectralClusterer(Clusterer):
+class FiedlerClusterer(Clusterer):
 
     def __init__(self, embedding_dim, hidden_dim, num_classes, fielder_threshold=0.1, device=DEVICE):
-        super(SpectralClusterer, self).__init__()
+        super(FiedlerClusterer, self).__init__()
         self.device = device
         self.fieldler_threshold = fielder_threshold
 
@@ -128,11 +128,10 @@ class SpectralClusterer(Clusterer):
                 similarity_graph="base", K=3, epsilon=0.5):
         
         grouping_matrix, grouping_loss = self.get_grouping_matrix(x, edge_index_dict, attribute_dict, grouping_matrix_true)
-        
         fiedler_value, fiedler_vector = self.compute_fiedler(grouping_matrix, similarity_graph, K, epsilon)
-        while fiedler_value <= self.fieldler_threshold:
+        
+        if fiedler_value <= self.fieldler_threshold:
             x, edge_dict, attribute_dict, clustering_matrix = self.fiedler_to_clusters(x, edge_index_dict, attribute_dict, fiedler_vector)
-            break
 
         return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
 
@@ -219,3 +218,14 @@ class SpectralClusterer(Clusterer):
             adjacency_matrices[edge_type] = result
         edge_dict, attribute_dict = self.adj_to_coord(adjacency_matrices)
         return x, edge_dict, attribute_dict, clustering_matrix
+    
+class FiedlerClusterStack(Clusterer):
+
+    def __init__(self, num_layers, embedding_dim, hidden_dim, num_classes, fielder_thresholds, device=DEVICE):
+        super(FiedlerClusterer, self).__init__()
+        self.device = device
+        self.fielder_stack = torch.nn.ModuleList(
+            [FiedlerClusterer(embedding_dim, hidden_dim, num_classes, fielder_thresholds[i]) for i in range(num_layers)])
+        
+    def forward(self, x, edge_index_dict, attribute_dict, fiedler_vector):
+        pass

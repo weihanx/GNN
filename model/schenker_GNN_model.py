@@ -2,7 +2,7 @@ from torch_geometric.nn import Linear
 import torch
 
 from model.layers.GNN_backbone import HeteroGNN
-from model.layers.GNN_cluster import GNN_Cluster, SpectralClusterer
+from model.layers.GNN_cluster import GNN_Cluster, FiedlerClusterer
 from model.layers.CatGCN import CatEmbedder, one_hot_to_indices
 from config import DEVICE, EMBEDDING_METHOD
 
@@ -16,7 +16,7 @@ class GroupMat(torch.nn.Module):
         self.linear_embed = torch.nn.Linear(num_feature, embedding_dim)
 
         # self.gnn_cluster1 = GNN_Cluster(embedding_dim, hidden_dim, num_classes, self.device)
-        self.gnn_cluster1 = SpectralClusterer(embedding_dim, hidden_dim, num_classes, device=self.device)
+        self.gnn_cluster1 = FiedlerClusterer(embedding_dim, hidden_dim, num_classes, device=self.device)
 
         self.gnn2_embed = HeteroGNN(embedding_dim, hidden_dim, hidden_dim)
         self.classifier = Linear(hidden_dim, num_classes)
