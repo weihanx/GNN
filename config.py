@@ -7,6 +7,7 @@ ROOT_PATH = "/home/users/wx83/GNN_baseline/gnn-music-analysis/final_code" #Weiha
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+INTERVAL_EDGES = [2, 3, 4, 5]
 
 class MatrixNormLoss(nn.Module):
     def __init__(self, ord='fro'):
