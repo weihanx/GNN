@@ -3,6 +3,7 @@ from pathlib import Path
 import logging
 import matplotlib.pyplot as plt
 import torch
+from tqdm import tqdm
 
 from utils import prepare_data_loaders, prepare_model
 from config import *
@@ -21,16 +22,18 @@ def debug_matrices(grouping_matrix_true, cluster_matrix_pred, grouping_matrix_pr
 
 def train_loop(model, train_loader):
     train_losses = []
-    for count, databatch in enumerate(train_loader):
+    for count, databatch in tqdm(enumerate(train_loader)):
         filename = Path(databatch['name'][0])
         data = databatch['data']
         data = data.to(DEVICE)
 
         cluster_matrices_true = [c[0] for c in databatch['cluster']]
-        grouping_matrices_true = [cluster_matrices_true[0]]
-        for i, cluster_matrix_true in enumerate(cluster_matrices_true):
-            if i == 0: continue
-            grouping_matrices_true.append(torch.matmul(grouping_matrices_true[i-1], cluster_matrices_true[i]))
+        grouping_matrices_true = [
+            torch.linalg.multi_dot(cluster_matrices_true[:i+1])
+            if i > 0
+            else cluster_matrices_true[0]
+            for i, _ in enumerate(cluster_matrices_true)
+        ]
         grouping_matrices_true = [
             torch.matmul(cluster_matrix_true, cluster_matrix_true.t())
             for cluster_matrix_true in grouping_matrices_true
@@ -40,7 +43,7 @@ def train_loop(model, train_loader):
 
         # atrue, aafter, apred = debug_matrices(grouping_matrix_true, cluster_matrix_1_pred, grouping_matrix_1_pred)
 
-        train_loss = sum(cluster_results['grouping_losses'])
+        train_loss = torch.sum(torch.stack(cluster_results['grouping_losses']))
         train_losses.append(train_loss.item())
         train_loss.backward()
 
@@ -59,15 +62,19 @@ def validation_loop(model, valid_loader):
             data = databatch['data']
 
             cluster_matrices_true = [c[0] for c in databatch['cluster']]
+            grouping_matrices_true = [cluster_matrices_true[0]]
+            for i, cluster_matrix_true in enumerate(cluster_matrices_true):
+                if i == 0: continue
+                grouping_matrices_true.append(torch.matmul(grouping_matrices_true[i - 1], cluster_matrices_true[i]))
             grouping_matrices_true = [
                 torch.matmul(cluster_matrix_true, cluster_matrix_true.t())
-                for cluster_matrix_true in cluster_matrices_true
+                for cluster_matrix_true in grouping_matrices_true
             ]
 
             data = data.to(DEVICE)
             final_emb, cluster_results = model(data, grouping_matrices_true)
 
-            val_loss = sum(cluster_results['grouping_losses'])
+            val_loss = torch.sum(torch.stack(cluster_results['grouping_losses']))
             val_losses.append(val_loss)
 
     return np.mean(val_losses)
@@ -94,9 +101,11 @@ if __name__ == "__main__":
     valid_acc_curve = []
 
     for epoch in range(NUM_EPOCHS):
+        print(f"Epoch {epoch + 1}:")
         train_loss = train_loop(model, train_loader)
+        print(f'Training Loss: {train_loss:.4f}')
         valid_loss = validation_loop(model, valid_loader)
-        print(f'Epoch: {epoch + 1}, Training Loss: {train_loss:.4f}, Validation Loss: {valid_loss:.4f}')
+        print(f'Validation Loss: {valid_loss:.4f}')
         scheduler.step()
         train_loss_curve.append(train_loss)
         valid_loss_curve.append(valid_loss)

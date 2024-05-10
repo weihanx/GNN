@@ -78,7 +78,7 @@ class GNN_Cluster(torch.nn.Module):
         grouping_vector = torch.sigmoid(distance_vector)
 
         grouping_matrix_pred = grouping_vector.reshape((num_nodes, num_nodes))
-        grouping_matrix_pred = grouping_matrix_pred.unsqueeze(0)
+        grouping_matrix_pred = grouping_matrix_pred
 
         # Eigen Decomposition
         eigen_values, eigen_vectors = torch.linalg.eigh(grouping_matrix_pred)
@@ -88,23 +88,28 @@ class GNN_Cluster(torch.nn.Module):
         clustering_matrix = torch.matmul(eigen_vectors, sqrt_e_values)
         clustering_matrix = clustering_matrix.squeeze().float()
         clustering_matrix = self.threshold(clustering_matrix)
-        clustering_matrix = torch.div(clustering_matrix, torch.sum(clustering_matrix, dim=1).unsqueeze(1))
-
 
         # Remove 0 columns
-        non_empty_mask = clustering_matrix.abs().sum(dim=0).bool()
-        clustering_matrix = clustering_matrix[:, non_empty_mask]
+        # non_empty_mask = clustering_matrix.abs().sum(dim=0).bool()
+        # clustering_matrix = clustering_matrix[:, non_empty_mask]
+
+        # clustering_matrix = clustering_matrix + torch.abs(torch.min(clustering_matrix, dim=1).values.unsqueeze(1))
+        # clustering_matrix = torch.div(clustering_matrix, torch.sum(clustering_matrix, dim=1).unsqueeze(1))
+
+        mask = clustering_matrix == 0
+        clustering_matrix.masked_fill(mask, -1e9)
+        clustering_matrix = torch.nn.functional.softmax(clustering_matrix, dim=1)
 
         if len(cluster_results["clustering_matrices"]) > 0:
             grouping_matrix_pred = multi_dot(cluster_results["clustering_matrices"] + [clustering_matrix])
-            grouping_matrix_pred = torch.matmul(grouping_matrix_pred, grouping_matrix_pred.t())
+            grouping_matrix_pred = torch.matmul(grouping_matrix_pred, grouping_matrix_pred.t()).squeeze()
 
-        grouping_loss = GROUPING_CRITERION(grouping_matrix_pred.squeeze(), grouping_matrix_true)
+        grouping_loss = GROUPING_CRITERION(grouping_matrix_pred, grouping_matrix_true)
 
         x['note'] = torch.matmul(clustering_matrix.t(), x['note'])
         adjacency_matrices = self.coord_to_adj(edge_index_dict, attribute_dict, num_nodes)
         for edge_type, A in adjacency_matrices.items():
-            result = torch.matmul(torch.matmul(clustering_matrix.t(), A), clustering_matrix).float()
+            result = multi_dot([clustering_matrix.t(), A, clustering_matrix]).float()
             adjacency_matrices[edge_type] = result
 
         edge_dict, attribute_dict = self.adj_to_coord(adjacency_matrices)
