@@ -35,6 +35,9 @@ class Clusterer(torch.nn.Module):
         distance_mat = torch.stack(dist_list, dim=0)
 
         return distance_mat
+    
+    def pairwise_distance_matrix(self, x):
+        pass
 
     def adj_to_coord(self, adj_matrix):
         """
@@ -127,12 +130,12 @@ class FiedlerClusterer(Clusterer):
         self.split_classifier = torch.nn.Linear(hidden_dim, 1).to(device)
 
     def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true,
-                similarity_graph="base", K=3, epsilon=0.5, split_with_classifier=True):
+                similarity_graph="base", K=3, epsilon=0.5, split_with_classifier=False):
         
         num_nodes = x['note'].shape[0]
 
-        grouping_matrix, grouping_loss = self.get_grouping_matrix(x, edge_index_dict, attribute_dict, grouping_matrix_true)
-        fiedler_value, fiedler_vector = self.compute_fiedler(grouping_matrix, similarity_graph, K, epsilon)
+        distance_matrix = self.get_distance_matrix(x, edge_index_dict, attribute_dict)
+        fiedler_value, fiedler_vector = self.compute_fiedler(distance_matrix, similarity_graph, K, epsilon)
         
         # Perform a BFS on the computed clusters
         total_clusters = 0
@@ -145,20 +148,16 @@ class FiedlerClusterer(Clusterer):
             # Skip exploring this cluster if the Fiedler value is below a fixed threshold
             if not split_with_classifier and fiedler_value <= self.fieldler_threshold:
                 continue
-            if split_with_classifier:
-                split = self.split_classifier(grouping_matrix)
+            # if split_with_classifier:
+            #     split = self.split_classifier(grouping_matrix)
 
             # Compute clusters based on Fiedler partition
             x, edge_dict, attribute_dict, clustering_matrix = self.fiedler_to_clusters(x, edge_index_dict, attribute_dict, fiedler_vector)
-            num_clusters = clustering_matrix.shape[0]
-            
-            total_clusters += num_clusters
-            if num_clusters == 1:
-                continue
+            total_clusters += 1
 
             # Compute the 2 subgraphs generated from the Fiedler partition
-            subgraph_group1 = grouping_matrix[clustering_matrix[:, 0]][:, clustering_matrix[:, 0]]
-            subgraph_group2 = grouping_matrix[clustering_matrix[:, 1]][:, clustering_matrix[:, 1]]
+            subgraph_group1 = distance_matrix[clustering_matrix[:, 0]][:, clustering_matrix[:, 0]]
+            subgraph_group2 = distance_matrix[clustering_matrix[:, 1]][:, clustering_matrix[:, 1]]
             # Compute associated fiedler values and vectors
             fiedler_value1, fiedler_vector1 = self.compute_fiedler(subgraph_group1, similarity_graph, K, epsilon)
             fiedler_value2, fiedler_vector2 = self.compute_fiedler(subgraph_group2, similarity_graph, K, epsilon)
@@ -167,48 +166,39 @@ class FiedlerClusterer(Clusterer):
             cluster_queue.append((subgraph_group1, x, edge_index_dict, attribute_dict, fiedler_value1, fiedler_vector1))
             cluster_queue.append((subgraph_group2, x, edge_index_dict, attribute_dict, fiedler_value2, fiedler_vector2))
 
-        final_grouping = torch.zeros((num_nodes, num_clusters))
+        final_grouping = torch.zeros((num_nodes, total_clusters))
         
         grouping_loss = GROUPING_CRITERION(final_grouping, grouping_matrix_true)
 
         return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
 
-    def get_grouping_matrix(self, x, edge_index_dict, attribute_dict, grouping_matrix_true):
-        num_nodes = x['note'].shape[0]
-
+    def get_distance_matrix(self, x, edge_index_dict, attribute_dict):
         x['note'] = self.gnn_embed(x, edge_index_dict, attribute_dict).float()
-
         distance_matrix = self.euclidean_distance_matrix(x['note'])
-        distance_vector = self.linear(distance_matrix).to(self.device).float()
-        grouping_vector = torch.sigmoid(distance_vector)
+        return distance_matrix
 
-        grouping_matrix = grouping_vector.reshape((num_nodes, num_nodes))
-        grouping_loss = GROUPING_CRITERION(grouping_matrix, grouping_matrix_true)
-        grouping_matrix = grouping_matrix.unsqueeze(0)
-        return grouping_matrix, grouping_loss
-
-    def compute_fiedler(self, grouping_matrix, similarity_graph, K, epsilon):
+    def compute_fiedler(self, distance_matrix, similarity_graph, K, epsilon):
         # We treat the grouping matrix as a adjacency/affinity matrix between nodes
         # and then compute a weighted adjancecy matrix W based on it
         if similarity_graph == "base":
             # Treat grouping matrix as weighted adjacency matrix
-            W = grouping_matrix
+            W = distance_matrix
         elif similarity_graph == "knn":
             # Connect nodes to their K nearest neighbors
-            W = torch.zeros_like(grouping_matrix)
+            W = torch.zeros_like(distance_matrix)
             # Sort the adjacency matrix by rows and record the indices
-            _, adj_sort = torch.sort(grouping_matrix, dim=1)
+            _, adj_sort = torch.sort(distance_matrix, dim=1)
             # Set the weight (i, j) to 1 when either i or j is within the k-nearest neighbors of each other
             for i in range(adj_sort.shape[0]):
                 W[i, adj_sort[i, :(K + 1)]] = 1
         elif similarity_graph == "mutual_knn":
             # Connect nodes iff they are each in the other's K nearest neighbors
-            W1 = torch.zeros_like(grouping_matrix)
+            W1 = torch.zeros_like(distance_matrix)
             # Sort the adjacency matrix by rows and record the indices
-            _, adj_sort = torch.sort(grouping_matrix, dim=1)
+            _, adj_sort = torch.sort(distance_matrix, dim=1)
             # Set the weight W1[i, j] to 0.5 when either i or j is within the k-nearest neighbors of each other (Flag)
             # Set the weight W1[i, j] to 1 when both i and j are within the k-nearest neighbors of each other
-            for i in range(grouping_matrix.shape[0]):
+            for i in range(distance_matrix.shape[0]):
                 for j in adj_sort[i, :(K + 1)]:
                     if i == j:
                         W1[i, i] = 1
@@ -219,7 +209,7 @@ class FiedlerClusterer(Clusterer):
             W = (W1 > 0.5).float()
         elif similarity_graph == "eps_filtration":
             # Form an edge between any two nodes with an grouping value greater than epsilon
-            W = (grouping_matrix <= epsilon).float()
+            W = (distance_matrix <= epsilon).float()
 
         # Compute the degree matrix D
         degree = torch.sum(W, dim=1)
