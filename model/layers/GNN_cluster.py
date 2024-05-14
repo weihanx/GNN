@@ -124,8 +124,10 @@ class FiedlerClusterer(Clusterer):
         self.classifier = Linear(hidden_dim, num_classes)
         self.dropout = torch.nn.Dropout(p=0.5)
 
+        self.split_classifier = torch.nn.Linear(hidden_dim, 1).to(device)
+
     def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true,
-                similarity_graph="base", K=3, epsilon=0.5):
+                similarity_graph="base", K=3, epsilon=0.5, split_with_classifier=True):
         
         num_nodes = x['note'].shape[0]
 
@@ -141,8 +143,10 @@ class FiedlerClusterer(Clusterer):
             grouping_matrix, x, edge_index_dict, attribute_dict, fiedler_value, fiedler_vector = cluster_queue.pop(0)
 
             # Skip exploring this cluster if the Fiedler value is below a fixed threshold
-            if fiedler_value <= self.fieldler_threshold:
+            if not split_with_classifier and fiedler_value <= self.fieldler_threshold:
                 continue
+            if split_with_classifier:
+                split = self.split_classifier(grouping_matrix)
 
             # Compute clusters based on Fiedler partition
             x, edge_dict, attribute_dict, clustering_matrix = self.fiedler_to_clusters(x, edge_index_dict, attribute_dict, fiedler_vector)
