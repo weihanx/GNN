@@ -131,7 +131,7 @@ class FiedlerClusterer(Clusterer):
 
     def forward(self, x, edge_index_dict, attribute_dict, grouping_matrix_true,
                 similarity_graph="base", K=3, epsilon=0.5, split_with_classifier=False):
-        
+
         num_nodes = x['note'].shape[0]
 
         distance_matrix = self.get_distance_matrix(x, edge_index_dict, attribute_dict)
@@ -166,8 +166,11 @@ class FiedlerClusterer(Clusterer):
             cluster_queue.append((subgraph_group1, x, edge_index_dict, attribute_dict, fiedler_value1, fiedler_vector1))
             cluster_queue.append((subgraph_group2, x, edge_index_dict, attribute_dict, fiedler_value2, fiedler_vector2))
 
-        final_grouping = torch.zeros((num_nodes, total_clusters))
-        
+        # Compute the final clustering matrix
+        final_clusters = torch.zeros((num_nodes, total_clusters))
+
+        # Final grouping matrix is the square of the final clustering matrix
+        final_grouping = torch.matmul(final_clusters, torch.transpose(final_clusters, 0, 1))
         grouping_loss = GROUPING_CRITERION(final_grouping, grouping_matrix_true)
 
         return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
@@ -176,7 +179,7 @@ class FiedlerClusterer(Clusterer):
     def get_distance_matrix(self, x, edge_index_dict, attribute_dict):
         # Compute embeddings of notes
         x['note'] = self.gnn_embed(x, edge_index_dict, attribute_dict).float()
-        
+
         n = x['note'].shape[0]
         distance_matrix = torch.zeros((n, n))
         # Iterate over each pair of vectors
