@@ -172,9 +172,20 @@ class FiedlerClusterer(Clusterer):
 
         return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
 
+    # Compute pairwise Euclidean distance matrix in embedding space
     def get_distance_matrix(self, x, edge_index_dict, attribute_dict):
+        # Compute embeddings of notes
         x['note'] = self.gnn_embed(x, edge_index_dict, attribute_dict).float()
-        distance_matrix = self.euclidean_distance_matrix(x['note'])
+        
+        n = x['note'].shape[0]
+        distance_matrix = torch.zeros((n, n))
+        # Iterate over each pair of vectors
+        for i in range(n):
+            for j in range(n):
+                # Compute the Euclidean distance between vector i and vector j
+                diff = x['note'][i] - x['note'][j]
+                distance = torch.sqrt(torch.sum(diff ** 2))
+                distance_matrix[i, j] = distance
         return distance_matrix
 
     def compute_fiedler(self, distance_matrix, similarity_graph, K, epsilon):
