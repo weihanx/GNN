@@ -140,6 +140,10 @@ class FiedlerClusterer(Clusterer):
         # Perform a BFS on the computed clusters
         total_clusters = 0
         cluster_queue = [(grouping_matrix, x, edge_index_dict, attribute_dict, fiedler_value, fiedler_vector)]
+        
+        # Each entry is a column vector of num_nodes x 1 indicating whether the given node is in the cluster
+        final_clusters = []
+        
         while cluster_queue:
 
             # Get the next 'depth' of clusters to explore
@@ -147,7 +151,11 @@ class FiedlerClusterer(Clusterer):
 
             # Skip exploring this cluster if the Fiedler value is below a fixed threshold
             if not split_with_classifier and fiedler_value <= self.fieldler_threshold:
+
+                # This is a terminal cluster for the nodes involved
+
                 continue
+
             # if split_with_classifier:
             #     split = self.split_classifier(grouping_matrix)
 
@@ -167,10 +175,10 @@ class FiedlerClusterer(Clusterer):
             cluster_queue.append((subgraph_group2, x, edge_index_dict, attribute_dict, fiedler_value2, fiedler_vector2))
 
         # Compute the final clustering matrix
-        final_clusters = torch.zeros((num_nodes, total_clusters))
+        final_cluster_matrix = torch.cat(final_clusters)
 
         # Final grouping matrix is the square of the final clustering matrix
-        final_grouping = torch.matmul(final_clusters, torch.transpose(final_clusters, 0, 1))
+        final_grouping = torch.matmul(final_cluster_matrix, torch.transpose(final_cluster_matrix, 0, 1))
         grouping_loss = GROUPING_CRITERION(final_grouping, grouping_matrix_true)
 
         return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
