@@ -151,16 +151,16 @@ class FiedlerClusterer(Clusterer):
 
             # Skip exploring this cluster if the Fiedler value is below a fixed threshold
             if not split_with_classifier and fiedler_value <= self.fieldler_threshold:
-
                 # This is a terminal cluster for the nodes involved
-
+                assignment = torch.zeros((num_nodes, 1))
+                final_clusters.append(assignment)
                 continue
 
             # if split_with_classifier:
             #     split = self.split_classifier(grouping_matrix)
 
             # Compute clusters based on Fiedler partition
-            x, edge_dict, attribute_dict, clustering_matrix = self.fiedler_to_clusters(x, edge_index_dict, attribute_dict, fiedler_vector)
+            clustering_matrix = self.fiedler_to_clusters(x, fiedler_vector)
             total_clusters += 1
 
             # Compute the 2 subgraphs generated from the Fiedler partition
@@ -181,7 +181,16 @@ class FiedlerClusterer(Clusterer):
         final_grouping = torch.matmul(final_cluster_matrix, torch.transpose(final_cluster_matrix, 0, 1))
         grouping_loss = GROUPING_CRITERION(final_grouping, grouping_matrix_true)
 
-        return x, edge_dict, attribute_dict, clustering_matrix, grouping_loss, grouping_matrix
+        final_cluster_matrix = final_cluster_matrix.squeeze().float()
+        x['note'] = torch.matmul(final_cluster_matrix.t(), x['note'])
+
+        adjacency_matrices = self.coord_to_adj(edge_index_dict, attribute_dict, num_nodes)
+        for edge_type, A in adjacency_matrices.items():
+            result = torch.matmul(torch.matmul(final_cluster_matrix.t(), A), final_cluster_matrix).float()
+            adjacency_matrices[edge_type] = result
+        edge_dict, attribute_dict = self.adj_to_coord(adjacency_matrices)
+
+        return x, edge_dict, attribute_dict, final_cluster_matrix, grouping_loss, grouping_matrix
 
     # Compute pairwise Euclidean distance matrix in embedding space
     def get_distance_matrix(self, x, edge_index_dict, attribute_dict):
@@ -250,7 +259,7 @@ class FiedlerClusterer(Clusterer):
         return fiedler_value, fiedler_vector
 
     # TODO: Explore using a softmax to get soft assignment instead of hard clustering
-    def fiedler_to_clusters(self, x, edge_index_dict, attribute_dict, fiedler_vector):
+    def fiedler_to_clusters(self, x, fiedler_vector):
 
         num_nodes = x['note'].shape[0]
         positive_indices = (fiedler_vector > 0).nonzero()[:, 1]
@@ -260,12 +269,4 @@ class FiedlerClusterer(Clusterer):
         clustering_matrix[negative_indices, 0] = 1
         clustering_matrix[positive_indices, 1] = 1
 
-        clustering_matrix = clustering_matrix.squeeze().float()
-        x['note'] = torch.matmul(clustering_matrix.t(), x['note'])
-
-        adjacency_matrices = self.coord_to_adj(edge_index_dict, attribute_dict, num_nodes)
-        for edge_type, A in adjacency_matrices.items():
-            result = torch.matmul(torch.matmul(clustering_matrix.t(), A), clustering_matrix).float()
-            adjacency_matrices[edge_type] = result
-        edge_dict, attribute_dict = self.adj_to_coord(adjacency_matrices)
-        return x, edge_dict, attribute_dict, clustering_matrix
+        return clustering_matrix
