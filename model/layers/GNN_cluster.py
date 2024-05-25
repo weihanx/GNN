@@ -133,13 +133,15 @@ class FiedlerClusterer(Clusterer):
                 similarity_graph="base", K=3, epsilon=0.5, split_with_classifier=False):
 
         num_nodes = x['note'].shape[0]
+        nodes = x['note'].clone()
 
-        distance_matrix = self.get_distance_matrix(x, edge_index_dict, attribute_dict)
+        distance_matrix = self.get_distance_matrix(x, edge_index_dict, attribute_dict).to(self.device)
         fiedler_value, fiedler_vector = self.compute_fiedler(distance_matrix, similarity_graph, K, epsilon)
         
         # Perform a BFS on the computed clusters
         total_clusters = 0
-        cluster_queue = [(grouping_matrix, x, edge_index_dict, attribute_dict, fiedler_value, fiedler_vector)]
+        node_labels = torch.arange(num_nodes).to(self.device)
+        cluster_queue = [(distance_matrix, nodes, edge_index_dict, attribute_dict, fiedler_value, fiedler_vector, node_labels)]
         
         # Each entry is a column vector of num_nodes x 1 indicating whether the given node is in the cluster
         final_clusters = []
@@ -147,12 +149,13 @@ class FiedlerClusterer(Clusterer):
         while cluster_queue:
 
             # Get the next 'depth' of clusters to explore
-            grouping_matrix, x, edge_index_dict, attribute_dict, fiedler_value, fiedler_vector = cluster_queue.pop(0)
+            grouping_matrix, nodes, edge_index_dict, attribute_dict, fiedler_value, fiedler_vector, node_labels = cluster_queue.pop(0)
 
             # Skip exploring this cluster if the Fiedler value is below a fixed threshold
-            if not split_with_classifier and fiedler_value <= self.fieldler_threshold:
+            if not split_with_classifier and (fiedler_value <= self.fieldler_threshold or grouping_matrix.shape[0] <= 2):
                 # This is a terminal cluster for the nodes involved
-                assignment = torch.zeros((num_nodes, 1))
+                assignment = torch.zeros(num_nodes, dtype=torch.float32)
+                assignment[node_labels] = 1
                 final_clusters.append(assignment)
                 continue
 
@@ -160,26 +163,29 @@ class FiedlerClusterer(Clusterer):
             #     split = self.split_classifier(grouping_matrix)
 
             # Compute clusters based on Fiedler partition
-            clustering_matrix = self.fiedler_to_clusters(x, fiedler_vector)
+            clustering_matrix = self.fiedler_to_clusters(nodes, fiedler_vector)
             total_clusters += 1
 
             # Compute the 2 subgraphs generated from the Fiedler partition
-            subgraph_group1 = distance_matrix[clustering_matrix[:, 0]][:, clustering_matrix[:, 0]]
-            subgraph_group2 = distance_matrix[clustering_matrix[:, 1]][:, clustering_matrix[:, 1]]
+            subgraph_group1 = grouping_matrix[clustering_matrix[:, 0]][:, clustering_matrix[:, 0]]
+            subgraph_group2 = grouping_matrix[clustering_matrix[:, 1]][:, clustering_matrix[:, 1]]
+            x1, x2 = nodes[clustering_matrix[:, 0]][:], nodes[clustering_matrix[:, 1]][:]
+            
             # Compute associated fiedler values and vectors
             fiedler_value1, fiedler_vector1 = self.compute_fiedler(subgraph_group1, similarity_graph, K, epsilon)
             fiedler_value2, fiedler_vector2 = self.compute_fiedler(subgraph_group2, similarity_graph, K, epsilon)
+            node_labels1, node_labels2 = node_labels[clustering_matrix[:, 0]], node_labels[clustering_matrix[:, 1]]
 
             # Push each subgraph onto the queue
-            cluster_queue.append((subgraph_group1, x, edge_index_dict, attribute_dict, fiedler_value1, fiedler_vector1))
-            cluster_queue.append((subgraph_group2, x, edge_index_dict, attribute_dict, fiedler_value2, fiedler_vector2))
+            cluster_queue.append((subgraph_group1, x1, edge_index_dict, attribute_dict, fiedler_value1, fiedler_vector1, node_labels1))
+            cluster_queue.append((subgraph_group2, x2, edge_index_dict, attribute_dict, fiedler_value2, fiedler_vector2, node_labels2))
 
         # Compute the final clustering matrix
-        final_cluster_matrix = torch.cat(final_clusters)
+        final_cluster_matrix = torch.stack(final_clusters, dim=1).to(self.device)
 
         # Final grouping matrix is the square of the final clustering matrix
-        final_grouping = torch.matmul(final_cluster_matrix, torch.transpose(final_cluster_matrix, 0, 1))
-        grouping_loss = GROUPING_CRITERION(final_grouping, grouping_matrix_true)
+        final_grouping = torch.matmul(final_cluster_matrix, torch.transpose(final_cluster_matrix, 0, 1)).to(self.device)
+        grouping_loss = torch.autograd.Variable(GROUPING_CRITERION(final_grouping, grouping_matrix_true), requires_grad=True)
 
         final_cluster_matrix = final_cluster_matrix.squeeze().float()
         x['note'] = torch.matmul(final_cluster_matrix.t(), x['note'])
@@ -248,24 +254,27 @@ class FiedlerClusterer(Clusterer):
         # Graph laplacian, note that this is guaranteed to be psd
         L = D - W
 
-        # Eigen Decomposition
+        # Eigen Decomposition; use linalg.eigh instead of linalg.eig since L is symmetric
         eigen_values, eigen_vectors = torch.linalg.eigh(L)
         # Sort the eigenvalues in ascending order and get the corresponding indices
         sorted_indices = torch.argsort(eigen_values).squeeze()
 
+        if eigen_values.shape[0] == 1:
+            return eigen_values[0], eigen_vectors[0]
+
         # Get the fielder value/vector, the second smallest eigenvalue/vector
-        fiedler_value = eigen_values[:, sorted_indices[1]]
-        fiedler_vector = eigen_vectors[:, sorted_indices[1], :]
+        fiedler_value = eigen_values[sorted_indices[1]]
+        fiedler_vector = eigen_vectors[:, sorted_indices[1]]
         return fiedler_value, fiedler_vector
 
     # TODO: Explore using a softmax to get soft assignment instead of hard clustering
     def fiedler_to_clusters(self, x, fiedler_vector):
 
-        num_nodes = x['note'].shape[0]
-        positive_indices = (fiedler_vector > 0).nonzero()[:, 1]
-        negative_indices = (fiedler_vector < 0).nonzero()[:, 1]
+        num_nodes = x.shape[0]
+        positive_indices = (fiedler_vector > 0).nonzero().to(self.device)
+        negative_indices = (fiedler_vector < 0).nonzero().to(self.device)
         
-        clustering_matrix = torch.zeros((num_nodes, 2)).to(self.device)
+        clustering_matrix = torch.zeros((num_nodes, 2), dtype=bool).to(self.device)
         clustering_matrix[negative_indices, 0] = 1
         clustering_matrix[positive_indices, 1] = 1
 
